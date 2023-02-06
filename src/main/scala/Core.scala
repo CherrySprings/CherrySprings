@@ -22,9 +22,8 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   val sv39_en  = Wire(Bool())
   val satp_ppn = Wire(UInt(44.W))
 
-  val stall_b         = Wire(Bool())
-  val flush_until_ex  = Wire(Bool())
-  val flush_until_mem = Wire(Bool())
+  val stall_b = Wire(Bool())
+  val flush   = Wire(Bool())
 
   /* ----- Stage 1 - Instruction Fetch (IF) -------- */
 
@@ -48,7 +47,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   val if_id = Module(new PipelineReg(new FDPacket))
   if_id.io.in    <> ifu.io.out
   if_id.io.en    := stall_b
-  if_id.io.flush := flush_until_ex
+  if_id.io.flush := flush
 
   /* ----- Stage 2 - Instruction Decode (ID) ------- */
 
@@ -68,7 +67,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   id_ex.io.in.rs2_data         := id_rs2_data
   id_ex.io.in.rs2_data_from_rf := id_rs2_data_from_rf
   id_ex.io.en                  := stall_b
-  id_ex.io.flush               := flush_until_ex
+  id_ex.io.flush               := flush
 
   /* ----- Stage 3 - Execution (EX) ---------------- */
 
@@ -92,49 +91,42 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     alu.io.adder_out
   )
 
-  val ex_mem = Module(new PipelineReg(new XMPacket))
-  ex_mem.io.in.uop              := id_ex.io.out.uop
-  ex_mem.io.in.rs1_data         := id_ex.io.out.rs1_data
-  ex_mem.io.in.rs2_data_from_rf := id_ex.io.out.rs2_data_from_rf
-  ex_mem.io.in.rd_data := Mux(
+  val alu_br_out = Wire(UInt(xLen.W))
+  alu_br_out := Mux(
     id_ex.io.out.uop.jmp_op === s"b$JMP_JAL".U || id_ex.io.out.uop.jmp_op === s"b$JMP_JALR".U,
     id_ex.io.out.uop.npc,
     alu.io.out
   )
-  ex_mem.io.en    := stall_b
-  ex_mem.io.flush := flush_until_mem
 
-  /* ----- Stage 4 - Memory (MEM) ------------------ */
-
-  val is_mem   = ex_mem.io.out.uop.fu === s"b$FU_LSU".U
-  val is_mdu   = ex_mem.io.out.uop.fu === s"b$FU_MDU".U
-  val is_csr   = ex_mem.io.out.uop.fu === s"b$FU_CSR".U
-  val is_store = isStore(ex_mem.io.out.uop.lsu_op)
-  val is_amo   = isAmo(ex_mem.io.out.uop.lsu_op)
+  val is_mem   = id_ex.io.out.uop.fu === s"b$FU_LSU".U
+  val is_mdu   = id_ex.io.out.uop.fu === s"b$FU_MDU".U
+  val is_csr   = id_ex.io.out.uop.fu === s"b$FU_CSR".U
+  val is_store = isStore(id_ex.io.out.uop.lsu_op)
+  val is_amo   = isAmo(id_ex.io.out.uop.lsu_op)
 
   val lsu = Module(new LSU)
   val dmem_proxy = Module(new CachePortProxy()(p.alterPartial({
     case IsIPTW => false
     case IsDPTW => true
   })))
-  lsu.io.uop      := ex_mem.io.out.uop
+  lsu.io.uop      := id_ex.io.out.uop
   lsu.io.is_mem   := is_mem
   lsu.io.is_store := is_store
   lsu.io.is_amo   := is_amo
-  lsu.io.addr     := ex_mem.io.out.rd_data
-  lsu.io.wdata    := ex_mem.io.out.rs2_data_from_rf
+  lsu.io.addr     := alu_br_out
+  lsu.io.wdata    := id_ex.io.out.rs2_data_from_rf
 
   val mdu = Module(new MDU)
-  mdu.io.uop    := ex_mem.io.out.uop
+  mdu.io.uop    := id_ex.io.out.uop
   mdu.io.is_mdu := is_mdu
-  mdu.io.in1    := ex_mem.io.out.rs1_data
-  mdu.io.in2    := ex_mem.io.out.rs2_data_from_rf
+  mdu.io.in1    := id_ex.io.out.rs1_data
+  mdu.io.in2    := id_ex.io.out.rs2_data_from_rf
 
   val csr = Module(new CSR)
-  csr.io.uop          := ex_mem.io.out.uop
-  csr.io.rw.addr      := ex_mem.io.out.uop.instr(31, 20)
-  csr.io.rw.cmd       := ex_mem.io.out.uop.csr_op
-  csr.io.rw.wdata     := ex_mem.io.out.rs1_data
+  csr.io.uop          := id_ex.io.out.uop
+  csr.io.rw.addr      := id_ex.io.out.uop.instr(31, 20)
+  csr.io.rw.cmd       := id_ex.io.out.uop.csr_op
+  csr.io.rw.wdata     := id_ex.io.out.rs1_data
   sys_jmp_packet      := csr.io.jmp_packet
   prv                 := csr.io.prv
   sv39_en             := csr.io.sv39_en
@@ -152,31 +144,31 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
 
   io.fence_i := csr.io.fence_i
 
-  val mem_wb = Module(new PipelineReg(new MWPacket))
-  mem_wb.io.in.uop := ex_mem.io.out.uop
-  mem_wb.io.in.uop.valid := Mux(
+  val ex_wb = Module(new PipelineReg(new XWPacket))
+  ex_wb.io.in.uop := id_ex.io.out.uop
+  ex_wb.io.in.uop.valid := Mux(
     is_mem,
     lsu.io.valid && (lsu.io.exc_code === 0.U),
-    Mux(is_mdu, mdu.io.valid, ex_mem.io.out.uop.valid)
+    Mux(is_mdu, mdu.io.valid, id_ex.io.out.uop.valid)
   ) && !csr.io.is_int
-  mem_wb.io.in.rd_data := MuxLookup(
-    ex_mem.io.out.uop.fu,
-    ex_mem.io.out.rd_data,
+  ex_wb.io.in.rd_data := MuxLookup(
+    id_ex.io.out.uop.fu,
+    alu_br_out,
     Array(
       s"b$FU_LSU".U -> lsu.io.rdata,
       s"b$FU_MDU".U -> mdu.io.out,
       s"b$FU_CSR".U -> csr.io.rw.rdata
     )
   )
-  mem_wb.io.en    := lsu.io.ready && mdu.io.ready
-  mem_wb.io.flush := false.B
+  ex_wb.io.en    := lsu.io.ready && mdu.io.ready
+  ex_wb.io.flush := false.B
 
   /* ----- Stage 5 - Write Back (WB) --------------- */
 
-  val commit_uop = mem_wb.io.out.uop
+  val commit_uop = ex_wb.io.out.uop
   rf.io.rd_wen   := commit_uop.valid && commit_uop.rd_wen
   rf.io.rd_index := commit_uop.rd_index
-  rf.io.rd_data  := mem_wb.io.out.rd_data
+  rf.io.rd_data  := ex_wb.io.out.rd_data
 
   /* ----- Forwarding Unit ------------------------- */
 
@@ -190,13 +182,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       && decode.io.out.rs1_index === id_ex.io.out.uop.rd_index
       && decode.io.out.rs1_index =/= 0.U
   ) {
-    id_rs1_data := ex_mem.io.in.rd_data
-  }.elsewhen(
-    need_rs1 && ex_mem.io.out.uop.rd_wen
-      && decode.io.out.rs1_index === ex_mem.io.out.uop.rd_index
-      && decode.io.out.rs1_index =/= 0.U
-  ) {
-    id_rs1_data := mem_wb.io.in.rd_data
+    id_rs1_data := ex_wb.io.in.rd_data
   }.otherwise {
     id_rs1_data := MuxLookup(
       decode.io.out.rs1_src,
@@ -214,13 +200,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       && decode.io.out.rs2_index === id_ex.io.out.uop.rd_index
       && decode.io.out.rs2_index =/= 0.U
   ) {
-    id_rs2_data := ex_mem.io.in.rd_data
-  }.elsewhen(
-    need_rs2 && ex_mem.io.out.uop.rd_wen
-      && decode.io.out.rs2_index === ex_mem.io.out.uop.rd_index
-      && decode.io.out.rs2_index =/= 0.U
-  ) {
-    id_rs2_data := mem_wb.io.in.rd_data
+    id_rs2_data := ex_wb.io.in.rd_data
   }.otherwise {
     id_rs2_data := MuxLookup(
       decode.io.out.rs2_src,
@@ -238,22 +218,15 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       && decode.io.out.rs2_index === id_ex.io.out.uop.rd_index
       && decode.io.out.rs2_index =/= 0.U
   ) {
-    id_rs2_data_from_rf := ex_mem.io.in.rd_data
-  }.elsewhen(
-    need_rs2_from_rf && ex_mem.io.out.uop.rd_wen
-      && decode.io.out.rs2_index === ex_mem.io.out.uop.rd_index
-      && decode.io.out.rs2_index =/= 0.U
-  ) {
-    id_rs2_data_from_rf := mem_wb.io.in.rd_data
+    id_rs2_data_from_rf := ex_wb.io.in.rd_data
   }.otherwise {
     id_rs2_data_from_rf := rf.io.rs2_data
   }
 
   /* ----- Pipeline Control Signals -------------- */
 
-  stall_b         := lsu.io.ready && mdu.io.ready
-  flush_until_ex  := alu_jmp_packet.valid || flush_until_mem
-  flush_until_mem := sys_jmp_packet.valid
+  stall_b := lsu.io.ready && mdu.io.ready
+  flush   := alu_jmp_packet.valid || sys_jmp_packet.valid
 
   /* ----- Performance Counters ------------------ */
 
@@ -268,7 +241,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
 
   if (enableDifftest) {
     val is_mmio = WireDefault(false.B)
-    when(commit_uop.valid && RegNext(is_mem) && !RegNext(lsu.io.addr(31).asBool)) {
+    when(commit_uop.valid && RegNext(is_mem) && !RegNext(lsu.io.addr(31).asBool) && RegNext(prv === PRV.M.U)) {
       is_mmio := true.B
     }
 
@@ -318,7 +291,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     diff_wb.io.coreid := hartID.U
     diff_wb.io.valid  := commit_uop.valid && commit_uop.rd_wen
     diff_wb.io.dest   := commit_uop.rd_index
-    diff_wb.io.data   := mem_wb.io.out.rd_data
+    diff_wb.io.data   := ex_wb.io.out.rd_data
 
     val trap  = (commit_uop.instr === HALT()) && commit_uop.valid
     val rf_a0 = WireInit(0.U(xLen.W))

@@ -43,7 +43,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
 
   val rdata = WireDefault(0.U(xLen.W))
   val wdata = Wire(UInt(xLen.W))
-  val wen   = io.rw.cmd =/= s"b$CSR_N".U
+  val wen   = (io.rw.cmd =/= s"b$CSR_N".U) && (io.uop.exc === s"b$EXC_N".U)
   wdata := MuxLookup(
     io.rw.cmd,
     0.U,

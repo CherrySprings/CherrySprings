@@ -16,14 +16,7 @@ class DXPacket(implicit p: Parameters) extends CherrySpringsBundle {
   val rs2_data_from_rf = UInt(xLen.W)
 }
 
-class XMPacket(implicit p: Parameters) extends CherrySpringsBundle {
-  val rs1_data         = UInt(xLen.W)
-  val rs2_data_from_rf = UInt(xLen.W)
-  val rd_data          = UInt(xLen.W)
-  val uop              = new MicroOp
-}
-
-class MWPacket(implicit p: Parameters) extends CherrySpringsBundle {
+class XWPacket(implicit p: Parameters) extends CherrySpringsBundle {
   val uop     = new MicroOp
   val rd_data = UInt(xLen.W)
 }

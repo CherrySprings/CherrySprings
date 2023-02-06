@@ -84,10 +84,23 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     lrsc_reserved := false.B
   }
 
+  val misaligned = Wire(Bool())
+  misaligned := MuxLookup(
+    io.uop.mem_len,
+    false.B,
+    Array(
+      s"b$MEM_HALF".U  -> (io.addr(0) =/= 0.U),
+      s"b$MEM_WORD".U  -> (io.addr(1, 0) =/= 0.U),
+      s"b$MEM_DWORD".U -> (io.addr(2, 0) =/= 0.U)
+    )
+  )
+
   switch(state) {
     is(s_idle) {
       when(io.is_mem) {
-        when(is_sc) {
+        when(misaligned) {
+          state := s_exc
+        }.elsewhen(is_sc) {
           state := Mux(sc_succeed, s_req, s_resp)
         }.otherwise {
           state := Mux(io.is_amo, s_amo_ld_req, s_req)
@@ -199,14 +212,15 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   /*
    * exc_code Description
    *        0 Load/store/AMO instruction is executed without exception (different from ISA, 0 for Instruction address misaligned)
-   *        4 Load address misaligned       (not implemented yet)
+   *        4 Load address misaligned
    *        5 Load access fault             (not implemented yet)
-   *        6 Store/AMO address misaligned  (not implemented yet)
+   *        6 Store/AMO address misaligned
    *        7 Store/AMO access fault        (not implemented yet)
    *       13 Load page fault
    *       15 Store/AMO page fault
    */
-  io.exc_code := Mux(state === s_exc, Mux(io.is_store || io.is_amo, 15.U, 13.U), 0.U)
+  val exc_code = Mux(io.is_store || io.is_amo, Mux(misaligned, 6.U, 15.U), Mux(misaligned, 4.U, 13.U))
+  io.exc_code := Mux(state === s_exc, exc_code, 0.U)
 
   if (debugLoadStore) {
     when(io.dmem.req.fire) {
