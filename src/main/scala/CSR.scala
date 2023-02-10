@@ -3,6 +3,8 @@ import chisel3.util._
 import Constant._
 import chipsalliance.rocketchip.config._
 import difftest._
+import freechips.rocketchip.rocket.Causes
+import freechips.rocketchip.rocket.CSRs
 
 object PRV {
   val U = 0
@@ -28,14 +30,16 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     val sv39_en      = Output(Bool())
     val satp_ppn     = Output(UInt(44.W))
     val fence_i      = Output(Bool())
+    val sfence_vma   = Output(Bool())
     val jmp_packet   = Output(new JmpPacket)
     val lsu_addr     = Input(UInt(xLen.W))
     val lsu_exc_code = Input(UInt(4.W))
     val mtip         = Input(Bool())
     val is_int       = Output(Bool())
 
-    val mcycle   = Input(UInt(xLen.W))
-    val minstret = Input(UInt(xLen.W))
+    val cycle   = Output(UInt(xLen.W))
+    val instret = Output(UInt(xLen.W))
+    val commit  = Input(UInt(1.W))
   })
 
   // privilege mode
@@ -45,9 +49,10 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val prv_is_ms = prv_is_m || prv_is_s
   val prv_is_u  = (prv === PRV.U.U)
 
-  val rdata = WireDefault(0.U(xLen.W))
-  val wdata = Wire(UInt(xLen.W))
-  val wen   = (io.rw.cmd =/= s"b$CSR_N".U) && (io.uop.exc === s"b$EXC_N".U)
+  val csr_legal = WireDefault(false.B)
+  val rdata     = WireDefault(0.U(xLen.W))
+  val wdata     = Wire(UInt(xLen.W))
+  val wen       = (io.rw.cmd =/= s"b$CSR_N".U) && (io.uop.exc === s"b$EXC_N".U) && csr_legal
   wdata := MuxLookup(
     io.rw.cmd,
     0.U,
@@ -57,7 +62,6 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
       s"b$CSR_RC".U -> (rdata & ~io.rw.wdata)
     )
   )
-  val csr_legal = WireDefault(false.B)
 
   // constant masks
   val s_exc_mask = "h0f7ff".U // exclude env call from M-mode
@@ -141,7 +145,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     status_sie,
     0.U(1.W)
   )
-  when(io.rw.addr === 0x100.U) {
+  when(io.rw.addr === CSRs.sstatus.U) {
     rdata := sstatus
     when(wen) {
       status_sie  := wdata(1)
@@ -154,7 +158,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     }
     csr_legal := prv_is_ms
   }
-  when(io.rw.addr === 0x300.U) {
+  when(io.rw.addr === CSRs.mstatus.U) {
     rdata := mstatus
     when(wen) {
       status_sie  := wdata(1)
@@ -184,7 +188,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Supervisor trap-handler base address
    */
   val stvec = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x105.U) {
+  when(io.rw.addr === CSRs.stvec.U) {
     rdata := stvec
     when(wen) {
       stvec := wdata
@@ -199,7 +203,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Supervisor counter enable
    */
   val scounteren = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x106.U) {
+  when(io.rw.addr === CSRs.scounteren.U) {
     rdata := scounteren
     when(wen) {
       scounteren := wdata
@@ -214,7 +218,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Scratch register for supervisor trap handlers
    */
   val sscratch = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x140.U) {
+  when(io.rw.addr === CSRs.sscratch.U) {
     rdata := sscratch
     when(wen) {
       sscratch := wdata
@@ -229,7 +233,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine exception program counter
    */
   val sepc = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x141.U) {
+  when(io.rw.addr === CSRs.sepc.U) {
     rdata := sepc
     when(wen) {
       sepc := wdata
@@ -244,7 +248,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Supervisor trap cause
    */
   val scause = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x142.U) {
+  when(io.rw.addr === CSRs.scause.U) {
     rdata := scause
     when(wen) {
       scause := wdata
@@ -259,7 +263,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Supervisor bad address or instruction
    */
   val stval = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x143.U) {
+  when(io.rw.addr === CSRs.stval.U) {
     rdata := stval
     when(wen) {
       stval := wdata
@@ -273,15 +277,16 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        satp
    * Description: Supervisor address translation and protection
    */
-  val satp              = RegInit(0.U(xLen.W))
-  val satp_mode_updated = WireDefault(false.B)
-  when(io.rw.addr === 0x180.U) {
+  val satp         = RegInit(0.U(xLen.W))
+  val satp_updated = WireDefault(false.B)
+  val tvm_en       = prv_is_s && mstatus_tvm.asBool
+  when(io.rw.addr === CSRs.satp.U) {
     rdata := satp
     when(wen) {
-      satp              := wdata
-      satp_mode_updated := (prv === PRV.S.U) // flush pipeline after satp updated if in S mode
+      satp         := wdata
+      satp_updated := prv_is_s // flush pipeline after satp updated if in S mode
     }
-    csr_legal := prv_is_ms
+    csr_legal := prv_is_ms && !tvm_en
   }
   io.sv39_en  := (satp(63, 60) === 8.U)
   io.satp_ppn := satp(43, 0)
@@ -292,7 +297,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        mvendorid
    * Description: Vendor ID
    */
-  when(io.rw.addr === 0xf11.U) {
+  when(io.rw.addr === CSRs.mvendorid.U) {
     rdata     := 0.U
     csr_legal := prv_is_m
   }
@@ -303,7 +308,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        marchid
    * Description: Architecture ID
    */
-  when(io.rw.addr === 0xf12.U) {
+  when(io.rw.addr === CSRs.marchid.U) {
     rdata     := 0.U
     csr_legal := prv_is_m
   }
@@ -314,7 +319,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        mimpid
    * Description: Implementation ID
    */
-  when(io.rw.addr === 0xf13.U) {
+  when(io.rw.addr === CSRs.mimpid.U) {
     rdata     := 0.U
     csr_legal := prv_is_m
   }
@@ -325,7 +330,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        mhartid
    * Description: Hardware thread ID
    */
-  when(io.rw.addr === 0xf14.U) {
+  when(io.rw.addr === CSRs.mhartid.U) {
     rdata     := hartID.U
     csr_legal := prv_is_m
   }
@@ -337,7 +342,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: ISA and extensions
    */
   val misa = "h8000000000141101".U(64.W)
-  when(io.rw.addr === 0x301.U) {
+  when(io.rw.addr === CSRs.misa.U) {
     rdata     := misa
     csr_legal := prv_is_m
   }
@@ -349,7 +354,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine exception delegation register
    */
   val medeleg = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x302.U) {
+  when(io.rw.addr === CSRs.medeleg.U) {
     rdata := medeleg
     when(wen) {
       medeleg := wdata & s_exc_mask
@@ -364,10 +369,10 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine interrupt delegation register
    */
   val mideleg = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x303.U) {
+  when(io.rw.addr === CSRs.mideleg.U) {
     rdata := mideleg
     when(wen) {
-      mideleg := wdata & m_int_mask
+      mideleg := wdata & s_int_mask
     }
     csr_legal := prv_is_m
   }
@@ -415,7 +420,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     ie_ssie,
     ie_usie
   )
-  when(io.rw.addr === 0x304.U) {
+  when(io.rw.addr === CSRs.mie.U) {
     rdata := mie
     when(wen) {
       ie_usie := wdata(0)
@@ -430,7 +435,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     }
     csr_legal := prv_is_m
   }
-  when(io.rw.addr === 0x104.U) {
+  when(io.rw.addr === CSRs.sie.U) {
     rdata := sie
     when(wen) {
       ie_usie := wdata(0)
@@ -450,7 +455,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine trap-handler base address
    */
   val mtvec = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x305.U) {
+  when(io.rw.addr === CSRs.mtvec.U) {
     rdata := mtvec
     when(wen) {
       mtvec := wdata
@@ -465,7 +470,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine counter enable
    */
   val mcounteren = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x306.U) {
+  when(io.rw.addr === CSRs.mcounteren.U) {
     rdata := mcounteren
     when(wen) {
       mcounteren := wdata
@@ -480,7 +485,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Scratch register for machine trap handlers
    */
   val mscratch = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x340.U) {
+  when(io.rw.addr === CSRs.mscratch.U) {
     rdata := mscratch
     when(wen) {
       mscratch := wdata
@@ -495,7 +500,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine exception program counter
    */
   val mepc = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x341.U) {
+  when(io.rw.addr === CSRs.mepc.U) {
     rdata := mepc
     when(wen) {
       mepc := wdata
@@ -510,7 +515,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine trap cause
    */
   val mcause = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x342.U) {
+  when(io.rw.addr === CSRs.mcause.U) {
     rdata := mcause
     when(wen) {
       mcause := wdata
@@ -525,7 +530,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine bad address or instruction
    */
   val mtval = RegInit(0.U(xLen.W))
-  when(io.rw.addr === 0x343.U) {
+  when(io.rw.addr === CSRs.mtval.U) {
     rdata := mtval
     when(wen) {
       mtval := wdata
@@ -576,11 +581,11 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     ip_ssip,
     ip_usip
   )
-  when(io.rw.addr === 0x344.U) {
+  when(io.rw.addr === CSRs.mip.U) {
     rdata     := mip
     csr_legal := prv_is_m
   }
-  when(io.rw.addr === 0x144.U) {
+  when(io.rw.addr === CSRs.sip.U) {
     rdata     := sip
     csr_legal := prv_is_ms
   }
@@ -591,10 +596,20 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        mcycle / cycle
    * Description: Machine cycle counter / Cycle counter for RDCYCLE instruction
    */
-  when(io.rw.addr === 0xb00.U || io.rw.addr === 0xc00.U) {
-    rdata     := io.mcycle
-    csr_legal := true.B
+  val cycle = RegInit(UInt(64.W), 0.U)
+  cycle := cycle + 1.U
+  when(io.rw.addr === CSRs.mcycle.U) {
+    rdata := cycle
+    when(wen) {
+      cycle := wdata
+    }
+    csr_legal := prv_is_m
   }
+  when(io.rw.addr === CSRs.cycle.U) {
+    rdata     := cycle
+    csr_legal := prv_is_m || (prv_is_s && !mcounteren(0)) || (prv_is_u && !mcounteren(0) && !scounteren(0))
+  }
+  io.cycle := cycle
 
   /*
    * Number:      0xB02 / 0xC02
@@ -603,11 +618,22 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Description: Machine instructions-retired counter /
    *              Instructions-retired counter for RDINSTRET instruction
    */
-  when(io.rw.addr === 0xb02.U || io.rw.addr === 0xc02.U) {
-    rdata     := io.minstret
-    csr_legal := true.B
+  val instret = RegInit(UInt(64.W), 0.U)
+  instret := instret + io.commit
+  when(io.rw.addr === CSRs.minstret.U) {
+    rdata := instret
+    when(wen) {
+      instret := wdata
+    }
+    csr_legal := prv_is_m
   }
+  when(io.rw.addr === CSRs.instret.U) {
+    rdata     := instret
+    csr_legal := prv_is_m || (prv_is_s && !mcounteren(2)) || (prv_is_u && !mcounteren(2) && !scounteren(2))
+  }
+  io.instret := instret
 
+  // CSR module output
   io.rw.rdata := rdata
   io.prv      := prv
 
@@ -617,10 +643,9 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * privilege mode is changed to y; xPIE is set to 1; and xPP is set to the least-privileged
    * supported mode (U if U-mode is implemented, else M). If xPP != M, xRET also sets MPRV = 0.
    */
-  val is_mret = io.uop.sys_op === s"b$SYS_MRET".U
-  val is_sret = io.uop.sys_op === s"b$SYS_SRET".U
-
-  when(is_mret) {
+  val is_mret    = io.uop.sys_op === s"b$SYS_MRET".U
+  val mret_legal = prv_is_m
+  when(is_mret && mret_legal) {
     prv          := mstatus_mpp
     mstatus_mie  := mstatus_mpie
     mstatus_mpie := 1.U
@@ -630,7 +655,9 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     }
   }
 
-  when(is_sret) {
+  val is_sret    = io.uop.sys_op === s"b$SYS_SRET".U
+  val sret_legal = prv_is_ms && !mstatus_tsr.asBool
+  when(is_sret && sret_legal) {
     prv         := status_spp
     status_sie  := status_spie
     status_spie := 1.U
@@ -638,9 +665,17 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     when(status_spp =/= PRV.M.U) {
       mstatus_mprv := 0.U
     }
-    status_sie  := status_spie
-    status_spie := 1.U
   }
+
+  /*
+   * System instructions
+   */
+  val is_sfv     = io.uop.sys_op === s"b$SYS_SFV".U
+  val sfv_legal  = prv_is_ms && !(prv_is_s && mstatus_tvm.asBool)
+  val is_fence_i = io.uop.sys_op === s"b$SYS_FENCEI".U
+  val is_sys     = io.sfence_vma && io.fence_i
+  io.sfence_vma := is_sfv && sfv_legal
+  io.fence_i    := is_fence_i
 
   /*
    * Exception & Interrupt
@@ -648,6 +683,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val is_exc_from_prev = (io.uop.exc =/= s"b$EXC_N".U)
   val is_exc_from_lsu  = (io.lsu_exc_code =/= 0.U)
   val is_exc_from_csr  = !csr_legal && (io.rw.cmd =/= s"b$CSR_N".U)
+  val is_exc_from_sys  = (is_mret && !mret_legal) || (is_sret && !sret_legal) || (is_sfv && !sfv_legal)
   val is_exc           = is_exc_from_prev || is_exc_from_lsu || is_exc_from_csr
   val is_int_clint     = ie_mtie.asBool && ip_mtip
   val is_int           = mstatus_mie.asBool && is_int_clint && io.uop.valid && (io.uop.fu === s"b$FU_ALU".U)
@@ -655,94 +691,71 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val cause_exc_onehot = Wire(UInt(16.W))
   val cause_int        = Wire(UInt(4.W))
   val cause_int_onehot = Wire(UInt(16.W))
-  cause_exc := Mux(
-    is_exc_from_csr,
-    2.U, // Illegal instruction exception for illegal CSR access
+  cause_exc := MuxLookup(
+    io.uop.exc, // check exception from early stage first
     Mux(
       io.lsu_exc_code =/= 0.U,
       io.lsu_exc_code,
-      MuxLookup(
-        io.uop.exc,
-        0.U,
-        Array(
-          s"b$EXC_IAM".U -> 0.U,
-          s"b$EXC_IAF".U -> 1.U,
-          s"b$EXC_II".U  -> 2.U,
-          s"b$EXC_EB".U  -> 3.U,
-          s"b$EXC_EC".U  -> Cat("b10".U, prv),
-          s"b$EXC_IPF".U -> 12.U
-        )
-      )
+      Mux(is_exc_from_csr || is_exc_from_sys, Causes.illegal_instruction.U, 0.U)
+    ),
+    Array(
+      s"b$EXC_IAM".U -> Causes.misaligned_fetch.U,
+      s"b$EXC_IAF".U -> Causes.fetch_access.U,
+      s"b$EXC_II".U  -> Causes.illegal_instruction.U,
+      s"b$EXC_EB".U  -> Causes.breakpoint.U,
+      s"b$EXC_EC".U  -> Cat("b10".U, prv),
+      s"b$EXC_IPF".U -> Causes.fetch_page_fault.U
     )
   )
+
   cause_exc_onehot := UIntToOH(cause_exc)
   cause_int        := 7.U // todo: only MTIP, implement other interrupts
   cause_int_onehot := UIntToOH(cause_int)
   io.is_int        := is_int
 
-  val trap_to_s  = WireDefault(false.B)
-  val trap_value = WireDefault(0.U(64.W))
+  val tval = WireDefault(0.U(64.W))
   when(is_exc_from_lsu) {
-    trap_value := io.lsu_addr
+    tval := io.lsu_addr
   }
   when(io.uop.exc === s"b$EXC_II".U) {
-    trap_value := io.uop.instr
+    tval := io.uop.instr
   }
   when(io.uop.exc === s"b$EXC_IPF".U) {
-    trap_value := io.uop.pc
+    tval := io.uop.pc
   }
 
-  // todo: optimize this logic
-  when(prv === PRV.M.U && is_exc) {
+  val trap      = is_exc || is_int
+  val trap_to_s = WireDefault(false.B)
+  val trap_pc   = WireDefault(0.U(xLen.W))
+  when(!prv_is_m) {
+    trap_to_s :=
+      (is_exc && ((cause_exc_onehot & medeleg) =/= 0.U)) ||
+      (is_int && ((cause_int_onehot & mideleg) =/= 0.U))
+  }
+  when(trap_to_s && trap) {
+    stval       := tval
+    scause      := Mux(is_exc, cause_exc, Cat(1.U(1.W), 0.U(59.W), cause_int))
+    sepc        := io.uop.pc
+    status_spie := status_sie
+    status_sie  := 0.U
+    status_spp  := prv
+    prv         := PRV.S.U
+    trap_pc     := Cat(stvec(xLen - 1, 2) + Mux(is_int && (stvec(1, 0) === 1.U), cause_int, 0.U), 0.U(2.W))
+  }
+  when(!trap_to_s && trap) {
+    mtval        := tval
+    mcause       := Mux(is_exc, cause_exc, Cat(1.U(1.W), 0.U(59.W), cause_int))
     mepc         := io.uop.pc
-    mcause       := cause_exc
-    mtval        := trap_value
     mstatus_mpie := mstatus_mie
     mstatus_mie  := 0.U
     mstatus_mpp  := prv
-  }
-  when(prv === PRV.M.U && is_int) {
-    mepc         := io.uop.pc
-    mcause       := Cat(1.U(1.W), 0.U(59.W), cause_int)
-    mtval        := 0.U
-    mstatus_mpie := mstatus_mie
-    mstatus_mie  := 0.U
-    mstatus_mpp  := prv
-
-  }
-  // todo: supervisor & user level interrupt
-  when((prv === PRV.U.U || prv === PRV.S.U) && is_exc) {
-    when((cause_exc_onehot & medeleg) =/= 0.U) {
-      sepc        := io.uop.pc
-      scause      := cause_exc
-      stval       := trap_value
-      status_spie := status_sie
-      status_sie  := 0.U
-      status_spp  := prv
-      status_spie := status_sie
-      status_sie  := 0.U
-      status_spp  := prv
-      prv         := PRV.S.U
-      trap_to_s   := true.B
-    }.otherwise {
-      mepc         := io.uop.pc
-      mcause       := cause_exc
-      mtval        := trap_value
-      mstatus_mpie := mstatus_mie
-      mstatus_mie  := 0.U
-      mstatus_mpp  := prv
-      prv          := PRV.M.U
-    }
+    prv          := PRV.M.U
+    trap_pc      := Cat(mtvec(xLen - 1, 2) + Mux(is_int && (mtvec(1, 0) === 1.U), cause_int, 0.U), 0.U(2.W))
   }
 
-  io.fence_i := io.uop.sys_op === s"b$SYS_FENCEI".U
-
-  io.jmp_packet.valid := is_exc || is_int || io.fence_i || satp_mode_updated || is_mret || is_sret
-  io.jmp_packet.target := Mux(
-    is_exc || is_int,
-    Mux(trap_to_s, stvec, mtvec),
-    Mux(io.fence_i || satp_mode_updated, io.uop.npc, Mux(is_mret, mepc, sepc))
-  )
+  // CSR / SYS control flow
+  io.jmp_packet.valid  := trap || is_sys || satp_updated || (is_mret && mret_legal) || (is_sret && sret_legal)
+  io.jmp_packet.target := Mux(trap, trap_pc, Mux(is_sys || satp_updated, io.uop.npc, Mux(is_mret, mepc, sepc)))
 
   if (enableDifftest) {
     val diff_cs = Module(new DifftestCSRState)

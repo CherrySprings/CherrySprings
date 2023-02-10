@@ -230,14 +230,9 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
 
   /* ----- Performance Counters ------------------ */
 
-  val mcycle   = RegInit(UInt(64.W), 0.U) // machine cycle counter
-  val minstret = RegInit(UInt(64.W), 0.U) // machine instructions-retired counter
-
-  mcycle   := mcycle + 1.U
-  minstret := minstret + commit_uop.valid.asUInt
-
-  csr.io.mcycle   := mcycle
-  csr.io.minstret := minstret
+  val mcycle   = csr.io.cycle // machine cycle counter
+  val minstret = csr.io.instret // machine instructions-retired counter
+  csr.io.commit := commit_uop.valid.asUInt
 
   if (enableDifftest) {
     val is_mmio = WireDefault(false.B)

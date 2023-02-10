@@ -2,6 +2,8 @@ import chisel3._
 import chisel3.util._
 import Constant._
 import chipsalliance.rocketchip.config._
+import freechips.rocketchip.rocket.Causes
+import java.awt.event.FocusEvent.Cause
 
 class LSU(implicit p: Parameters) extends CherrySpringsModule {
   require(xLen == 32 || xLen == 64)
@@ -219,7 +221,12 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
    *       13 Load page fault
    *       15 Store/AMO page fault
    */
-  val exc_code = Mux(io.is_store || io.is_amo, Mux(misaligned, 6.U, 15.U), Mux(misaligned, 4.U, 13.U))
+  val exc_code =
+    Mux(
+      io.is_store || io.is_amo,
+      Mux(misaligned, Causes.misaligned_store.U, Causes.store_page_fault.U),
+      Mux(misaligned, Causes.misaligned_load.U, Causes.load_page_fault.U)
+    )
   io.exc_code := Mux(state === s_exc, exc_code, 0.U)
 
   if (debugLoadStore) {
