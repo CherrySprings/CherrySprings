@@ -39,7 +39,7 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
     val resp = io.cache.resp
 
     // Directed-mapped, #size sets, 4x64-bit cacheline, read-only
-    val array        = Module(new SRAM(size))
+    val array        = Module(new SRAM(depth = size, dw = 256))
     val valid        = RegInit(VecInit(Seq.fill(size)(false.B)))
     val tag          = RegInit(VecInit(Seq.fill(size)(0.U((32 - 5 - log2Up(size)).W))))
     val hit          = valid(getIndex(req.bits.addr)) && (getTag(req.bits.addr) === tag(getIndex(req.bits.addr)))
@@ -85,7 +85,8 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
 
     val (_, get_bits) = edge.Get(source.U, Cat(addr_r(paddrLen - 1, 5), Fill(5, 0.U)), 5.U)
 
-    val data_from_cache = HoldUnless(
+    // cache read
+    val rdata = HoldUnless(
       MuxLookup(
         getOffset(addr_r),
         0.U(64.W),
@@ -96,18 +97,17 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
           3.U -> array.io.rdata(255, 192)
         )
       ),
-      RegNext(req.fire)
-    )
-    val data_from_memory = RegEnable(
-      tl.d.bits.data,
-      0.U(64.W),
-      tl.d.fire && refill_count === getOffset(addr_r)
+      RegNext(req.fire) || RegNext(tl.d.fire)
     )
 
+    // cache write
+    val wdata0 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 0.U))
+    val wdata1 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 1.U))
+    val wdata2 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 2.U))
+
     array.io.addr  := Mux(state === s_check, getIndex(io.cache.req.bits.addr), getIndex(addr_r))
-    array.io.wen   := tl.d.fire
-    array.io.widx  := refill_count
-    array.io.wdata := tl.d.bits.data
+    array.io.wen   := tl.d.fire && (refill_count === 3.U)
+    array.io.wdata := Cat(tl.d.bits.data, wdata2, wdata1, wdata0)
 
     when(resp.fire) {
       valid(getIndex(addr_r)) := true.B
@@ -119,7 +119,7 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
     tl.a.bits            := get_bits
     tl.d.ready           := state === s_resp
     resp.valid           := state === s_ok
-    resp.bits.rdata      := Mux(hit_r, data_from_cache, data_from_memory)
+    resp.bits.rdata      := rdata
     resp.bits.page_fault := false.B
   }
 }
