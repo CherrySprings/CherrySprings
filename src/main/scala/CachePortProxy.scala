@@ -27,7 +27,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
   ptw.io.prv                       := io.prv_mpp
   ptw.io.satp_ppn                  := io.satp_ppn
   ptw.io.ptw                       <> io.ptw
-  ptw.io.addr_trans.req.bits.vaddr := in_req_bits.addr
+  ptw.io.addr_trans.req.bits.vaddr := in_req_bits.addr.asTypeOf(new Sv39VirtAddr)
   ptw.io.addr_trans.req.bits.wen   := in_req_bits.wen
   ptw.io.addr_trans.req.valid      := (state_req === s_ptw_req)
   ptw.io.addr_trans.resp.ready     := (state_req === s_ptw_resp)
@@ -60,7 +60,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
     }
   }
 
-  val paddr      = RegEnable(ptw.io.addr_trans.resp.bits.paddr, 0.U, ptw.io.addr_trans.resp.fire)
+  val paddr      = RegEnable(ptw.io.addr_trans.resp.bits.paddr.asTypeOf(UInt(paddrLen.W)), 0.U, ptw.io.addr_trans.resp.fire)
   val page_fault = ptw.io.addr_trans.resp.bits.page_fault && ptw.io.addr_trans.resp.fire
   io.in.req.ready  := (state_req === s_in_req)
   io.out.req.valid := (state_req === s_out_req)
@@ -77,7 +77,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
     out_resp_bits := io.out.resp.bits
   }
 
-  val page_fault_r = BoolStopWatch(page_fault, io.in.resp.fire)
+  val page_fault_reg = BoolStopWatch(page_fault, io.in.resp.fire)
 
   switch(state_resp) {
     is(s_out_resp) {
@@ -92,7 +92,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
     }
   }
   io.in.resp.bits            := out_resp_bits
-  io.in.resp.bits.page_fault := page_fault_r
+  io.in.resp.bits.page_fault := page_fault_reg
   io.in.resp.valid           := (state_resp === s_in_resp)
   io.out.resp.ready          := (state_resp === s_out_resp)
 }

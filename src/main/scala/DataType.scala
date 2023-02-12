@@ -44,3 +44,34 @@ class ExternalInterruptIO(implicit p: Parameters) extends CherrySpringsBundle {
   val meip = Input(Bool())
   val seip = Input(Bool())
 }
+
+class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
+  val vpn2   = UInt(vpn2Len.W)
+  val vpn1   = UInt(vpn1Len.W)
+  val vpn0   = UInt(vpn0Len.W)
+  val offset = UInt(offsetLen.W)
+}
+
+class Sv39PhysAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
+  val ppn2   = UInt(ppn2Len.W)
+  val ppn1   = UInt(ppn1Len.W)
+  val ppn0   = UInt(ppn0Len.W)
+  val offset = UInt(offsetLen.W)
+}
+
+class Sv39PTE(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
+  val ppn = UInt(ppnLen.W)
+  val rsw = UInt(2.W)
+  val d   = Bool()
+  val a   = Bool()
+  val g   = Bool()
+  val u   = Bool()
+  val x   = Bool()
+  val w   = Bool()
+  val r   = Bool()
+  val v   = Bool()
+
+  def ppn0() = ppn(ppn0Len - 1, 0)
+  def ppn1() = ppn(ppn0Len + ppn1Len - 1, ppn0Len)
+  def ppn2() = ppn(ppn0Len + ppn1Len + ppn2Len - 1, ppn0Len + ppn1Len)
+}
