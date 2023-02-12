@@ -7,12 +7,12 @@ case object IsIPTW extends Field[Boolean]
 case object IsDPTW extends Field[Boolean]
 
 class AddrTransPortReq(implicit p: Parameters) extends CherrySpringsBundle {
-  val vaddr = Output(UInt(xLen.W))
+  val vaddr = Output(UInt(vaddrLen.W))
   val wen   = Output(Bool())
 }
 
 class AddrTransPortResp(implicit p: Parameters) extends CherrySpringsBundle {
-  val paddr      = Output(UInt(xLen.W))
+  val paddr      = Output(UInt(paddrLen.W))
   val page_fault = Output(Bool())
 }
 
@@ -38,7 +38,7 @@ class PTW(implicit p: Parameters) extends CherrySpringsModule {
   val state                                             = RegInit(s_req)
 
   val pt_level   = RegInit(0.U(2.W))
-  val vaddr      = RegInit(0.U(xLen.W))
+  val vaddr      = RegInit(0.U(vaddrLen.W))
   val req_wen    = RegInit(false.B)
   val pt_rdata   = RegInit(0.U(xLen.W))
   val pte        = io.ptw.resp.bits.rdata
@@ -140,11 +140,11 @@ class PTW(implicit p: Parameters) extends CherrySpringsModule {
     pt_level,
     0.U,
     Array(
-      2.U -> Cat(pt_rdata(53, 28), vaddr(29, 0)),
-      1.U -> Cat(pt_rdata(53, 19), vaddr(20, 0)),
-      0.U -> Cat(pt_rdata(53, 10), vaddr(11, 0))
+      2.U -> Cat(pt_rdata(29, 28), vaddr(29, 0)),
+      1.U -> Cat(pt_rdata(29, 19), vaddr(20, 0)),
+      0.U -> Cat(pt_rdata(29, 10), vaddr(11, 0))
     )
-  )
+  ) // assume 32-bit paddr
 
   io.ptw.req.bits := 0.U.asTypeOf(new CachePortReq)
   io.ptw.req.bits.addr := MuxLookup(

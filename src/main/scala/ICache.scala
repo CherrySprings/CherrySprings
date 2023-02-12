@@ -33,7 +33,7 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
 
     def getOffset(x: UInt) = x(4, 3)
     def getIndex(x:  UInt) = x(4 + log2Up(size), 5)
-    def getTag(x:    UInt) = x(31, 5 + log2Up(size))
+    def getTag(x:    UInt) = x(paddrLen - 1, 5 + log2Up(size))
 
     val req  = io.cache.req
     val resp = io.cache.resp
@@ -83,7 +83,7 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
       }
     }
 
-    val (_, get_bits) = edge.Get(source.U, Cat(addr_r(31, 5), Fill(5, 0.U)), 5.U)
+    val (_, get_bits) = edge.Get(source.U, Cat(addr_r(paddrLen - 1, 5), Fill(5, 0.U)), 5.U)
 
     val data_from_cache = HoldUnless(
       MuxLookup(

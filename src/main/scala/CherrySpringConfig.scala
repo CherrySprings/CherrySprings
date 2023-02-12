@@ -26,6 +26,8 @@ trait HasCherrySpringsParameters {
   def debugVirtRam:   Boolean = false
   def debugAXI4:      Boolean = false
   def xLen:           Int     = 64
+  def paddrLen:       Int     = 32
+  def vaddrLen:       Int     = 39
 }
 
 abstract class CherrySpringsModule(implicit val p: Parameters) extends Module with HasCherrySpringsParameters

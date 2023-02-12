@@ -38,7 +38,7 @@ class CachePortToTileLinkBridge(source: Int)(implicit p: Parameters)
     tl.d.ready := resp.ready
 
     // 64-bit CachePortIO to 64-bit TileLink/AXI4
-    val req_addr  = Cat(req.bits.addr(31, 3), Fill(3, 0.U))
+    val req_addr  = Cat(req.bits.addr(paddrLen - 1, 3), Fill(3, 0.U))
     val req_wdata = req.bits.wdata
     val req_wmask = req.bits.wmask
 

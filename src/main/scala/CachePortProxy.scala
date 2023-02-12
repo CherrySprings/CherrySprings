@@ -32,7 +32,9 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
   ptw.io.addr_trans.req.valid      := (state_req === s_ptw_req)
   ptw.io.addr_trans.resp.ready     := (state_req === s_ptw_resp)
 
-  val ptw_en     = (io.prv_mpp =/= PRV.M.U) && io.sv39_en
+  val ptw_en = (io.prv_mpp =/= PRV.M.U) && io.sv39_en
+
+  // record state when input fires, in case satp changes when accessing page table
   val ptw_en_reg = RegEnable(ptw_en, false.B, io.in.req.fire)
 
   switch(state_req) {

@@ -713,7 +713,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   cause_int_onehot := UIntToOH(cause_int)
   io.is_int        := is_int
 
-  val tval = WireDefault(0.U(64.W))
+  val tval = WireDefault(0.U(xLen.W))
   when(is_exc_from_lsu) {
     tval := io.lsu_addr
   }

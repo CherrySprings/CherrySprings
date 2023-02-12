@@ -43,18 +43,19 @@ class IFU(implicit p: Parameters) extends CherrySpringsModule {
     }
   }
 
-  val req_addr = Mux(io.jmp_packet.valid, io.jmp_packet.target, pc)
+  val req_addr = Wire(UInt(vaddrLen.W))
+  req_addr              := Mux(io.jmp_packet.valid, io.jmp_packet.target, pc)
   io.imem.req.bits      := 0.U.asTypeOf(new CachePortReq)
-  io.imem.req.bits.addr := Cat(req_addr(xLen - 1, 3), 0.U(3.W))
+  io.imem.req.bits.addr := Cat(req_addr(vaddrLen - 1, 3), 0.U(3.W))
   io.imem.req.valid     := io.out_ready && (state === s_req)
   io.imem.resp.ready    := (io.out_ready || io.jmp_packet.valid) && (state === s_resp)
 
-  val pc_queue = Module(new Queue(UInt(xLen.W), 2))
+  val pc_queue = Module(new Queue(UInt(vaddrLen.W), 2))
   pc_queue.io.enq.bits  := req_addr
   pc_queue.io.enq.valid := io.imem.req.fire
   pc_queue.io.deq.ready := io.imem.resp.fire
 
-  io.out.pc         := pc_queue.io.deq.bits
+  io.out.pc         := SignExt39_64(pc_queue.io.deq.bits)
   io.out.instr      := Mux(io.out.pc(2), io.imem.resp.bits.rdata(63, 32), io.imem.resp.bits.rdata(31, 0))
   io.out.page_fault := io.imem.resp.bits.page_fault
   io.out.valid      := io.imem.resp.fire && !io.jmp_packet.valid && !jmp_r

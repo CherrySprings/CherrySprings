@@ -3,7 +3,7 @@ import chisel3.util._
 import chipsalliance.rocketchip.config._
 
 class CachePortReq(implicit p: Parameters) extends CherrySpringsBundle {
-  val addr  = Output(UInt(xLen.W))
+  val addr  = Output(UInt(vaddrLen.W))
   val wdata = Output(UInt(xLen.W))
   val wmask = Output(UInt((xLen / 8).W))
   val wen   = Output(Bool())

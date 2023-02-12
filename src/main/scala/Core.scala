@@ -236,7 +236,9 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
 
   if (enableDifftest) {
     val is_mmio = WireDefault(false.B)
-    when(commit_uop.valid && RegNext(is_mem) && !RegNext(lsu.io.addr(31).asBool) && RegNext(prv === PRV.M.U)) {
+    when(
+      commit_uop.valid && RegNext(is_mem) && !RegNext(lsu.io.addr(paddrLen - 1).asBool) && RegNext(prv === PRV.M.U)
+    ) {
       is_mmio := true.B
     }
 
