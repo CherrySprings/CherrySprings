@@ -83,7 +83,8 @@ class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39
   val vpn0   = UInt(vpn0Len.W)
   val offset = UInt(offsetLen.W)
 
-  def vpn() = Cat(vpn2, vpn1, vpn0)
+  def vpn()    = Cat(vpn2, vpn1, vpn0)
+  def vpn2mb() = Cat(vpn2, vpn1)
 }
 
 class Sv39PhysAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -130,8 +131,12 @@ class TLB4KBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
 
 class TLB2MBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
   val flag = new Sv39PTEFlag
-  val vpn  = UInt((vpnLen - vpn0Len).W)
-  val ppn  = UInt((ppnLen - ppn0Len).W)
+  val vpn2 = UInt(vpn2Len.W)
+  val vpn1 = UInt(vpn1Len.W)
+  val ppn2 = UInt(ppn2Len.W)
+  val ppn1 = UInt(ppn1Len.W)
+
+  def vpn2mb() = Cat(vpn2, vpn1)
 }
 
 class TLB1GBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
