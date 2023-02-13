@@ -3,7 +3,6 @@ import chisel3.util._
 import Constant._
 import chipsalliance.rocketchip.config._
 import freechips.rocketchip.rocket.Causes
-import java.awt.event.FocusEvent.Cause
 
 class LSU(implicit p: Parameters) extends CherrySpringsModule {
   require(xLen == 32 || xLen == 64)

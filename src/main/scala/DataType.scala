@@ -45,11 +45,45 @@ class ExternalInterruptIO(implicit p: Parameters) extends CherrySpringsBundle {
   val seip = Input(Bool())
 }
 
+class CachePortReq(implicit p: Parameters) extends CherrySpringsBundle {
+  val addr  = Output(UInt(vaddrLen.W))
+  val wdata = Output(UInt(xLen.W))
+  val wmask = Output(UInt((xLen / 8).W))
+  val wen   = Output(Bool())
+}
+
+class CachePortResp(implicit p: Parameters) extends CherrySpringsBundle {
+  val rdata      = Output(UInt(xLen.W))
+  val page_fault = Output(Bool())
+}
+
+class CachePortIO(implicit p: Parameters) extends CherrySpringsBundle {
+  val req  = Decoupled(new CachePortReq)
+  val resp = Flipped(Decoupled(new CachePortResp))
+}
+
+class AddrTransPortReq(implicit p: Parameters) extends CherrySpringsBundle {
+  val vaddr = Output(new Sv39VirtAddr)
+  val wen   = Output(Bool())
+}
+
+class AddrTransPortResp(implicit p: Parameters) extends CherrySpringsBundle {
+  val paddr      = Output(new Sv39PhysAddr)
+  val page_fault = Output(Bool())
+}
+
+class AddrTransPortIO(implicit p: Parameters) extends CherrySpringsBundle {
+  val req  = Decoupled(new AddrTransPortReq)
+  val resp = Flipped(Decoupled(new AddrTransPortResp))
+}
+
 class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
   val vpn2   = UInt(vpn2Len.W)
   val vpn1   = UInt(vpn1Len.W)
   val vpn0   = UInt(vpn0Len.W)
   val offset = UInt(offsetLen.W)
+
+  def vpn() = Cat(vpn2, vpn1, vpn0)
 }
 
 class Sv39PhysAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -57,10 +91,11 @@ class Sv39PhysAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39
   val ppn1   = UInt(ppn1Len.W)
   val ppn0   = UInt(ppn0Len.W)
   val offset = UInt(offsetLen.W)
+
+  def ppn() = Cat(ppn2, ppn1, ppn0)
 }
 
-class Sv39PTE(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
-  val ppn = UInt(ppnLen.W)
+class Sv39PTEFlag(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
   val rsw = UInt(2.W)
   val d   = Bool()
   val a   = Bool()
@@ -70,8 +105,37 @@ class Sv39PTE(implicit p: Parameters) extends CherrySpringsBundle with Sv39Param
   val w   = Bool()
   val r   = Bool()
   val v   = Bool()
+}
 
-  def ppn0() = ppn(ppn0Len - 1, 0)
-  def ppn1() = ppn(ppn0Len + ppn1Len - 1, ppn0Len)
-  def ppn2() = ppn(ppn0Len + ppn1Len + ppn2Len - 1, ppn0Len + ppn1Len)
+class Sv39PTE(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
+  val ppn2 = UInt(ppn2Len.W)
+  val ppn1 = UInt(ppn1Len.W)
+  val ppn0 = UInt(ppn0Len.W)
+  val flag = new Sv39PTEFlag
+
+  def ppn() = Cat(ppn2, ppn1, ppn0)
+}
+
+class TLB4KBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
+  val flag = new Sv39PTEFlag
+  val vpn2 = UInt(vpn2Len.W)
+  val vpn1 = UInt(vpn1Len.W)
+  val vpn0 = UInt(vpn0Len.W)
+  val ppn2 = UInt(ppn2Len.W)
+  val ppn1 = UInt(ppn1Len.W)
+  val ppn0 = UInt(ppn0Len.W)
+
+  def vpn() = Cat(vpn2, vpn1, vpn0)
+}
+
+class TLB2MBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
+  val flag = new Sv39PTEFlag
+  val vpn  = UInt((vpnLen - vpn0Len).W)
+  val ppn  = UInt((ppnLen - ppn0Len).W)
+}
+
+class TLB1GBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
+  val flag = new Sv39PTEFlag
+  val vpn  = UInt((vpnLen - vpn0Len - vpn1Len).W)
+  val ppn  = UInt((ppnLen - ppn0Len - ppn1Len).W)
 }

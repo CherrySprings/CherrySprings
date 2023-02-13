@@ -7,15 +7,16 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
   require(xLen == 64)
 
   val io = IO(new Bundle {
-    val prv_mpp  = Input(UInt(2.W))
-    val sv39_en  = Input(Bool())
-    val satp_ppn = Input(UInt(44.W))
-    val in       = Flipped(new CachePortIO)
-    val out      = new CachePortIO
-    val ptw      = new CachePortIO
+    val prv_mpp    = Input(UInt(2.W))
+    val sv39_en    = Input(Bool())
+    val satp_ppn   = Input(UInt(44.W))
+    val sfence_vma = Input(Bool())
+    val in         = Flipped(new CachePortIO)
+    val out        = new CachePortIO
+    val ptw        = new CachePortIO
   })
 
-  val s_in_req :: s_ptw_req :: s_ptw_resp :: s_out_req :: Nil = Enum(4)
+  val s_in_req :: s_tlb_req :: s_tlb_resp :: s_out_req :: Nil = Enum(4)
   val state_req                                               = RegInit(s_in_req)
 
   val in_req_bits = RegInit(0.U.asTypeOf(new CachePortReq))
@@ -23,34 +24,36 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
     in_req_bits := io.in.req.bits
   }
 
-  val ptw = Module(new PTW)
-  ptw.io.prv                       := io.prv_mpp
-  ptw.io.satp_ppn                  := io.satp_ppn
-  ptw.io.ptw                       <> io.ptw
-  ptw.io.addr_trans.req.bits.vaddr := in_req_bits.addr.asTypeOf(new Sv39VirtAddr)
-  ptw.io.addr_trans.req.bits.wen   := in_req_bits.wen
-  ptw.io.addr_trans.req.valid      := (state_req === s_ptw_req)
-  ptw.io.addr_trans.resp.ready     := (state_req === s_ptw_resp)
+  val tlb = Module(new TLB)
+  tlb.io.prv                       := io.prv_mpp
+  tlb.io.satp_ppn                  := io.satp_ppn
+  tlb.io.sfence_vma                := io.sfence_vma
+  tlb.io.ptw                       <> io.ptw
+  tlb.io.addr_trans.req.bits.vaddr := in_req_bits.addr.asTypeOf(new Sv39VirtAddr)
+  tlb.io.addr_trans.req.bits.wen   := in_req_bits.wen
+  tlb.io.addr_trans.req.valid      := (state_req === s_tlb_req)
+  tlb.io.addr_trans.resp.ready     := (state_req === s_tlb_resp)
 
-  val ptw_en = (io.prv_mpp =/= PRV.M.U) && io.sv39_en
+  // address translation & protection enable
+  val atp_en = (io.prv_mpp =/= PRV.M.U) && io.sv39_en
 
   // record state when input fires, in case satp changes when accessing page table
-  val ptw_en_reg = RegEnable(ptw_en, false.B, io.in.req.fire)
+  val atp_en_reg = RegEnable(atp_en, false.B, io.in.req.fire)
 
   switch(state_req) {
     is(s_in_req) {
       when(io.in.req.fire) {
-        state_req := Mux(ptw_en, s_ptw_req, s_out_req)
+        state_req := Mux(atp_en, s_tlb_req, s_out_req)
       }
     }
-    is(s_ptw_req) {
-      when(ptw.io.addr_trans.req.fire) {
-        state_req := s_ptw_resp
+    is(s_tlb_req) {
+      when(tlb.io.addr_trans.req.fire) {
+        state_req := s_tlb_resp
       }
     }
-    is(s_ptw_resp) {
-      when(ptw.io.addr_trans.resp.fire) {
-        state_req := Mux(ptw.io.addr_trans.resp.bits.page_fault, s_in_req, s_out_req)
+    is(s_tlb_resp) {
+      when(tlb.io.addr_trans.resp.fire) {
+        state_req := Mux(tlb.io.addr_trans.resp.bits.page_fault, s_in_req, s_out_req)
       }
     }
     is(s_out_req) {
@@ -60,12 +63,12 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
     }
   }
 
-  val paddr      = RegEnable(ptw.io.addr_trans.resp.bits.paddr.asTypeOf(UInt(paddrLen.W)), 0.U, ptw.io.addr_trans.resp.fire)
-  val page_fault = ptw.io.addr_trans.resp.bits.page_fault && ptw.io.addr_trans.resp.fire
+  val paddr      = RegEnable(tlb.io.addr_trans.resp.bits.paddr.asTypeOf(UInt(paddrLen.W)), 0.U, tlb.io.addr_trans.resp.fire)
+  val page_fault = tlb.io.addr_trans.resp.bits.page_fault && tlb.io.addr_trans.resp.fire
   io.in.req.ready  := (state_req === s_in_req)
   io.out.req.valid := (state_req === s_out_req)
   io.out.req.bits  := in_req_bits
-  when(ptw_en_reg) {
+  when(atp_en_reg) {
     io.out.req.bits.addr := paddr
   }
 
