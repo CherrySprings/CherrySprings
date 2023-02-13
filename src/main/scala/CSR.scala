@@ -607,7 +607,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   }
   when(io.rw.addr === CSRs.cycle.U) {
     rdata     := cycle
-    csr_legal := prv_is_m || (prv_is_s && !mcounteren(0)) || (prv_is_u && !mcounteren(0) && !scounteren(0))
+    csr_legal := prv_is_m || (prv_is_s && mcounteren(0)) || (prv_is_u && mcounteren(0) && scounteren(0))
   }
   io.cycle := cycle
 
@@ -629,7 +629,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   }
   when(io.rw.addr === CSRs.instret.U) {
     rdata     := instret
-    csr_legal := prv_is_m || (prv_is_s && !mcounteren(2)) || (prv_is_u && !mcounteren(2) && !scounteren(2))
+    csr_legal := prv_is_m || (prv_is_s && mcounteren(2)) || (prv_is_u && mcounteren(2) && scounteren(2))
   }
   io.instret := instret
 
