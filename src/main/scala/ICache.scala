@@ -3,7 +3,6 @@ import chisel3.util._
 import chipsalliance.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
-import freechips.rocketchip.amba.axi4._
 
 class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   require(xLen == 64)
