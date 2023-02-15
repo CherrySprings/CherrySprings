@@ -19,9 +19,9 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
   val s_in_req :: s_tlb_req :: s_tlb_resp :: s_out_req :: Nil = Enum(4)
   val state_req                                               = RegInit(s_in_req)
 
-  val in_req_bits = RegInit(0.U.asTypeOf(new CachePortReq))
+  val in_req_bits_reg = RegInit(0.U.asTypeOf(new CachePortReq))
   when(io.in.req.fire) {
-    in_req_bits := io.in.req.bits
+    in_req_bits_reg := io.in.req.bits
   }
 
   val tlb = Module(new TLB)
@@ -29,8 +29,8 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
   tlb.io.satp_ppn                  := io.satp_ppn
   tlb.io.sfence_vma                := io.sfence_vma
   tlb.io.ptw                       <> io.ptw
-  tlb.io.addr_trans.req.bits.vaddr := in_req_bits.addr.asTypeOf(new Sv39VirtAddr)
-  tlb.io.addr_trans.req.bits.wen   := in_req_bits.wen
+  tlb.io.addr_trans.req.bits.vaddr := in_req_bits_reg.addr.asTypeOf(new Sv39VirtAddr)
+  tlb.io.addr_trans.req.bits.wen   := in_req_bits_reg.wen
   tlb.io.addr_trans.req.valid      := (state_req === s_tlb_req)
   tlb.io.addr_trans.resp.ready     := (state_req === s_tlb_resp)
 
@@ -67,35 +67,15 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
   val page_fault = tlb.io.addr_trans.resp.bits.page_fault && tlb.io.addr_trans.resp.fire
   io.in.req.ready  := (state_req === s_in_req)
   io.out.req.valid := (state_req === s_out_req)
-  io.out.req.bits  := in_req_bits
+  io.out.req.bits  := in_req_bits_reg
   when(atp_en_reg) {
     io.out.req.bits.addr := paddr
   }
 
-  val s_in_resp :: s_out_resp :: Nil = Enum(2)
-  val state_resp                     = RegInit(s_out_resp)
-
-  val out_resp_bits = RegInit(0.U.asTypeOf(new CachePortResp))
-  when(io.out.resp.fire) {
-    out_resp_bits := io.out.resp.bits
-  }
-
   val page_fault_reg = BoolStopWatch(page_fault, io.in.resp.fire)
 
-  switch(state_resp) {
-    is(s_out_resp) {
-      when(io.out.resp.fire || page_fault) {
-        state_resp := s_in_resp
-      }
-    }
-    is(s_in_resp) {
-      when(io.in.resp.fire) {
-        state_resp := s_out_resp
-      }
-    }
-  }
-  io.in.resp.bits            := out_resp_bits
+  io.in.resp.bits            := io.out.resp.bits
   io.in.resp.bits.page_fault := page_fault_reg
-  io.in.resp.valid           := (state_resp === s_in_resp)
-  io.out.resp.ready          := (state_resp === s_out_resp)
+  io.in.resp.valid           := io.out.resp.valid || page_fault_reg
+  io.out.resp.ready          := io.in.resp.ready
 }

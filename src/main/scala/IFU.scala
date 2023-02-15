@@ -13,7 +13,7 @@ class IF0(implicit p: Parameters) extends CherrySpringsModule {
   val pc_next   = Wire(UInt(xLen.W))
   val pc_update = (io.jmp_packet.valid || io.req.fire)
   val pc        = RegEnable(pc_next, resetPC.U, pc_update)
-  pc_next := Mux(io.jmp_packet.valid, io.jmp_packet.target + Mux(io.req.fire, 4.U, 0.U), pc + 4.U)
+  pc_next := Mux(io.jmp_packet.valid, io.jmp_packet.target, pc + 4.U)
 
   io.req_addr      := Mux(io.jmp_packet.valid, io.jmp_packet.target, pc)
   io.req.bits      := 0.U.asTypeOf(new CachePortReq)
@@ -28,6 +28,7 @@ class IF1(implicit p: Parameters) extends CherrySpringsModule {
     val stall_b    = Input(Bool())
     val out        = Output(new FDPacket)
     val ready      = Output(Bool())
+    val req_fire   = Input(Bool())
   })
 
   val s_init :: s_resp :: s_wait :: Nil = Enum(3)
@@ -42,16 +43,18 @@ class IF1(implicit p: Parameters) extends CherrySpringsModule {
 
   switch(state) {
     is(s_init) {
-      state := s_resp
+      when(io.req_fire) {
+        state := s_resp
+      }
     }
     is(s_resp) {
       when(io.resp.fire) {
-        state := Mux(state_to_wait, s_wait, s_resp)
+        state := Mux(state_to_wait, s_wait, Mux(io.jmp_packet.valid, s_init, s_resp))
       }
     }
     is(s_wait) {
       when(io.jmp_packet.valid) { // jump to page fault handler
-        state := s_resp
+        state := s_init
       }
     }
   }
@@ -61,7 +64,7 @@ class IF1(implicit p: Parameters) extends CherrySpringsModule {
   io.out       := 0.U.asTypeOf(new FDPacket)
   io.out.valid := io.resp.fire && !io.jmp_packet.valid && !jmp_r
 
-  io.ready := (io.resp.fire && !state_to_wait) || (state === s_init) || (state === s_wait && io.jmp_packet.valid)
+  io.ready := (io.resp.fire && !state_to_wait && !io.jmp_packet.valid) || (state === s_init)
 }
 
 class IFU(implicit p: Parameters) extends CherrySpringsModule {
@@ -84,6 +87,7 @@ class IFU(implicit p: Parameters) extends CherrySpringsModule {
   if1.io.jmp_packet := io.jmp_packet
   if1.io.resp       <> io.imem.resp
   if1.io.stall_b    := io.stall_b
+  if1.io.req_fire   := io.imem.req.fire
 
   val pc_queue = Module(new Queue(UInt(vaddrLen.W), 2))
   pc_queue.io.enq.bits  := if0.io.req_addr
