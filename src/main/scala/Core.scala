@@ -42,7 +42,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   imem_proxy.io.sv39_en    := sv39_en
   imem_proxy.io.satp_ppn   := satp_ppn
   imem_proxy.io.sfence_vma := sfence_vma
-  ifu.io.out_ready         := stall_b
+  ifu.io.stall_b           := stall_b
   ifu.io.jmp_packet.valid  := alu_jmp_packet.valid || sys_jmp_packet.valid
   ifu.io.jmp_packet.target := Mux(sys_jmp_packet.valid, sys_jmp_packet.target, alu_jmp_packet.target)
 
