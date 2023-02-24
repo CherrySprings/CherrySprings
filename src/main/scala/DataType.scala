@@ -68,13 +68,15 @@ class AddrTransPortReq(implicit p: Parameters) extends CherrySpringsBundle {
 }
 
 class AddrTransPortResp(implicit p: Parameters) extends CherrySpringsBundle {
-  val paddr      = Output(new Sv39PhysAddr)
-  val page_fault = Output(Bool())
+  val paddr        = Output(new Sv39PhysAddr)
+  val page_fault   = Output(Bool())
+  val tlb_hit      = Output(Bool())
+  val ptw_complete = Output(Bool())
 }
 
 class AddrTransPortIO(implicit p: Parameters) extends CherrySpringsBundle {
-  val req  = Decoupled(new AddrTransPortReq)
-  val resp = Flipped(Decoupled(new AddrTransPortResp))
+  val req  = Valid(new AddrTransPortReq)
+  val resp = Flipped(Valid(new AddrTransPortResp))
 }
 
 class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {

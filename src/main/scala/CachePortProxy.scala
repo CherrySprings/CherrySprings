@@ -32,7 +32,6 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule {
   tlb.io.addr_trans.req.bits.vaddr := in_req_bits_reg.addr.asTypeOf(new Sv39VirtAddr)
   tlb.io.addr_trans.req.bits.wen   := in_req_bits_reg.wen
   tlb.io.addr_trans.req.valid      := (state_req === s_tlb_req)
-  tlb.io.addr_trans.resp.ready     := (state_req === s_tlb_resp)
 
   // address translation & protection enable
   val atp_en = (io.prv_mpp =/= PRV.M.U) && io.sv39_en
