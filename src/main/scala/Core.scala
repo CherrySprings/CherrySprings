@@ -273,7 +273,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     diff_ic.io.sqIdx   := 0.U
     diff_ic.io.isLoad  := (commit_uop.lsu_op === s"b$LSU_LD".U) || (commit_uop.lsu_op === s"b$LSU_LDU".U)
     diff_ic.io.isStore := (commit_uop.lsu_op === s"b$LSU_ST".U)
-    if (debugCommit) {
+    if (debugInstrCommit) {
       when(commit_uop.valid) {
         printf(
           "%d [COMMIT] pc=%x instr=%x wen=%x wdest=%d prv=%d\n",

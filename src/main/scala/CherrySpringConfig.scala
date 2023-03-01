@@ -17,16 +17,13 @@ class CherrySpringsConfig extends Config(new CoreConfig)
 
 trait HasCherrySpringsParameters {
   implicit val p: Parameters
-  def enableDifftest: Boolean = p(EnableDifftest)
-  def resetPC:        BigInt  = p(ResetPC)
-  def hartID:         Int     = p(HartID)
-  def debugCommit:    Boolean = false
-  def debugLoadStore: Boolean = false
-  def debugTLB:       Boolean = false
-  def debugVirtRam:   Boolean = false
-  def xLen:           Int     = 64
-  def paddrLen:       Int     = 32
-  def vaddrLen:       Int     = 39
+  def enableDifftest:   Boolean = p(EnableDifftest)
+  def resetPC:          BigInt  = p(ResetPC)
+  def hartID:           Int     = p(HartID)
+  def xLen:             Int     = 64
+  def paddrLen:         Int     = 32
+  def vaddrLen:         Int     = 39
+  def debugInstrCommit: Boolean = false
 }
 
 abstract class CherrySpringsModule(implicit val p: Parameters) extends Module with HasCherrySpringsParameters

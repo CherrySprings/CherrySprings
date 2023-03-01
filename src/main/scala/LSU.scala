@@ -227,31 +227,4 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
       Mux(misaligned, Causes.misaligned_load.U, Causes.load_page_fault.U)
     )
   io.exc_code := Mux(state === s_exc, exc_code, 0.U)
-
-  if (debugLoadStore) {
-    when(io.dmem.req.fire) {
-      when(io.dmem.req.bits.wen) {
-        printf(
-          "%d [STORE-REQ ] addr=%x wdata=%x wmask=%x\n",
-          DebugTimer(),
-          io.dmem.req.bits.addr,
-          io.dmem.req.bits.wdata,
-          io.dmem.req.bits.wmask
-        )
-      }.otherwise {
-        printf(
-          "%d [LOAD -REQ ] addr=%x\n",
-          DebugTimer(),
-          io.dmem.req.bits.addr
-        )
-      }
-    }
-    when(io.dmem.resp.fire) {
-      printf(
-        "%d [     -RESP] rdata=%x\n",
-        DebugTimer(),
-        io.dmem.resp.bits.rdata
-      )
-    }
-  }
 }
