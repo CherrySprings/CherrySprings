@@ -49,7 +49,7 @@ class IF1(implicit p: Parameters) extends CherrySpringsModule {
     }
     is(s_resp) {
       when(io.resp.fire) {
-        state := Mux(state_to_wait, s_wait, Mux(io.jmp_packet.valid, s_init, s_resp))
+        state := Mux(state_to_wait, s_wait, s_init)
       }
     }
     is(s_wait) {
