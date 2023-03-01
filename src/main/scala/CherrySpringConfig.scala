@@ -23,6 +23,7 @@ trait HasCherrySpringsParameters {
   def xLen:             Int     = 64
   def paddrLen:         Int     = 32
   def vaddrLen:         Int     = 39
+  def sourceRange:      Int     = 4
   def debugInstrCommit: Boolean = false
 }
 

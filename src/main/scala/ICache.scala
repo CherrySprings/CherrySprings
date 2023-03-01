@@ -4,7 +4,7 @@ import chipsalliance.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 
-class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
+class ICache(size: Int)(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   require(xLen == 64)
 
   val node = TLClientNode(
@@ -12,8 +12,8 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
       TLMasterPortParameters.v1(
         clients = Seq(
           TLMasterParameters.v1(
-            name            = s"InstructionCache$source",
-            sourceId        = IdRange(source, source + 1),
+            name            = s"InstructionCache",
+            sourceId        = IdRange(0, sourceRange),
             supportsProbe   = TransferSizes(xLen),
             supportsGet     = TransferSizes(xLen),
             supportsPutFull = TransferSizes(xLen)
@@ -82,7 +82,8 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
       }
     }
 
-    val (_, get_bits) = edge.Get(source.U, Cat(addr_r(paddrLen - 1, 5), Fill(5, 0.U)), 5.U)
+    val source        = Counter(tl.a.fire, sourceRange)._1
+    val (_, get_bits) = edge.Get(source, Cat(addr_r(paddrLen - 1, 5), Fill(5, 0.U)), 5.U)
 
     // cache read
     val rdata = HoldUnless(
