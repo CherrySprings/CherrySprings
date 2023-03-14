@@ -7,7 +7,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   def isLeaf(p: Sv39PTE) = p.flag.r || p.flag.x
 
   val io = IO(new Bundle {
-    val prv_mpp    = Input(UInt(2.W))
+    val prv        = Input(UInt(2.W))
     val sv39_en    = Input(Bool())
     val satp_ppn   = Input(UInt(44.W))
     val sfence_vma = Input(Bool())
@@ -16,8 +16,8 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
     val ptw        = new CachePortIO
   })
 
-  val s_idle :: s_ptw_req :: s_ptw_resp :: s_ptw_complete :: Nil = Enum(4)
-  val state                                                      = RegInit(s_idle)
+  val s_idle :: s_ptw_req :: s_ptw_resp :: s_ptw_complete :: s_access_fault :: Nil = Enum(5)
+  val state                                                                        = RegInit(s_idle)
 
   // input register
   val in_req_bits = HoldUnless(io.in.req.bits, state === s_idle)
@@ -25,7 +25,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
 
   // access TLB
   val tlb = Module(new TLB)
-  tlb.io.prv        := io.prv_mpp
+  tlb.io.prv        := io.prv
   tlb.io.sfence_vma := io.sfence_vma
   tlb.io.vaddr      := io.in.req.bits.addr.asTypeOf(new Sv39VirtAddr)
   val tlb_pte   = tlb.io.rpte
@@ -39,18 +39,32 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
 
   // address translation & protection enable
   // need to record state when input fires, in case satp changes when accessing page table
-  val atp_en = HoldUnless((io.prv_mpp =/= PRV.M.U) && io.sv39_en, state === s_idle)
+  val atp_en = HoldUnless((io.prv =/= PRV.M.U) && io.sv39_en, state === s_idle)
+
+  // check in port request address range (only check paddr)
+  val in_addr       = io.in.req.bits.addr
+  val in_addr_clint = (in_addr >= "h02000000".U) && (in_addr < "h0200FFFF".U)
+  val in_addr_plic  = (in_addr >= "h0C000000".U) && (in_addr < "h0FFFFFFF".U)
+  val access_fault  = (in_addr(31) === 0.U) && !(in_addr_clint || in_addr_plic)
 
   // page table walk
   val ptw_level    = RegInit(0.U(2.W))
   val ptw_pte      = io.ptw.resp.bits.rdata.asTypeOf(new Sv39PTE)
   val ptw_pte_reg  = RegEnable(ptw_pte, 0.U.asTypeOf(new Sv39PTE), io.ptw.resp.fire)
   val ptw_complete = !ptw_pte.flag.v || (!ptw_pte.flag.r && ptw_pte.flag.w) || isLeaf(ptw_pte) || (ptw_level === 0.U)
+  val page_fault   = WireDefault(false.B)
 
   switch(state) {
     is(s_idle) {
-      when(io.in.req.fire && atp_en && !tlb.io.hit) {
-        state := s_ptw_req
+      when(io.in.req.fire) {
+        when(atp_en && !tlb.io.hit) {
+          state := s_ptw_req
+        }
+      }
+      when(io.in.req.valid) {
+        when(!atp_en && access_fault) {
+          state := s_access_fault
+        }
       }
       ptw_level := (pageTableLevels - 1).U
     }
@@ -70,7 +84,14 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
       }
     }
     is(s_ptw_complete) { // need one more cycle to avoid comb loop
-      state := s_idle
+      when(io.out.req.fire || page_fault) {
+        state := s_idle
+      }
+    }
+    is(s_access_fault) {
+      when(io.in.resp.fire) {
+        state := s_idle
+      }
     }
   }
 
@@ -97,12 +118,11 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   io.ptw.req.valid  := (state === s_ptw_req)
   io.ptw.resp.ready := (state === s_ptw_resp)
 
-  val prv   = HoldUnless(io.prv_mpp, state === s_idle)
+  val prv   = HoldUnless(io.prv, state === s_idle)
   val pte   = Mux(state === s_idle, tlb_pte, ptw_pte_reg)
   val level = Mux(state === s_idle, tlb_level, ptw_level)
 
   // check page fault for pte
-  val page_fault = WireDefault(false.B)
   when(!pte.flag.v || (!pte.flag.r && pte.flag.w)) {
     page_fault := true.B
   }
@@ -136,18 +156,44 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   paddr.ppn2   := pte.ppn2
 
   // forward in req port to out req port
-  io.in.req.ready  := (state === s_idle) && io.out.req.ready
-  io.out.req.valid := ((state === s_idle) && ((tlb.io.hit && !page_fault) || !atp_en) && io.in.req.valid) || (state === s_ptw_complete && !page_fault)
-  io.out.req.bits  := in_req_bits
+  io.in.req.ready := (state === s_idle) && (io.out.req.ready || access_fault || (atp_en && !tlb.io.hit))
+  io.out.req.valid := ((state === s_idle) && ((tlb.io.hit && !page_fault) || (!atp_en && !access_fault)) && io.in.req.valid) ||
+    (state === s_ptw_complete && !page_fault)
+  io.out.req.bits := in_req_bits
   when(atp_en) {
     io.out.req.bits.addr := paddr.asTypeOf(UInt(vaddrLen.W))
   }
 
   // forward out resp port to in resp port
-  val page_fault_reg =
-    BoolStopWatch(page_fault && atp_en && (state === s_idle || state === s_ptw_complete), io.in.resp.fire)
-  io.in.resp.bits            := io.out.resp.bits
-  io.in.resp.bits.page_fault := page_fault_reg
-  io.in.resp.valid           := io.out.resp.valid || page_fault_reg
-  io.out.resp.ready          := io.in.resp.ready
+  val page_fault_reg = BoolStopWatch(
+    page_fault && atp_en && ((state === s_idle && tlb.io.hit) || state === s_ptw_complete),
+    io.in.resp.fire
+  )
+  io.in.resp.bits              := io.out.resp.bits
+  io.in.resp.bits.page_fault   := page_fault_reg
+  io.in.resp.bits.access_fault := (state === s_access_fault)
+  io.in.resp.valid             := io.out.resp.valid || io.in.resp.bits.page_fault || io.in.resp.bits.access_fault
+  io.out.resp.ready            := io.in.resp.ready
+
+  if (debugPortProxy) {
+    val name = if (p(IsITLB)) "I-PortProxy" else "D-PortProxy"
+    when(io.in.req.fire) {
+      printf(cf"${DebugTimer()} [${name}] [in -req ] ${io.in.req.bits}\n")
+    }
+    when(io.ptw.req.fire) {
+      printf(cf"${DebugTimer()} [${name}] [ptw-req ] ${io.ptw.req.bits}\n")
+    }
+    when(io.out.req.fire) {
+      printf(cf"${DebugTimer()} [${name}] [out-req ] ${io.out.req.bits}\n")
+    }
+    when(io.in.resp.fire) {
+      printf(cf"${DebugTimer()} [${name}] [in -resp] ${io.in.resp.bits}\n")
+    }
+    when(io.ptw.resp.fire) {
+      printf(cf"${DebugTimer()} [${name}] [ptw-resp] ${io.ptw.resp.bits}\n")
+    }
+    when(io.out.resp.fire) {
+      printf(cf"${DebugTimer()} [${name}] [out-resp] ${io.out.resp.bits}\n")
+    }
+  }
 }

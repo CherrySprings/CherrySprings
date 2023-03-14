@@ -3,10 +3,15 @@ import chisel3.util._
 import chipsalliance.rocketchip.config._
 
 class FDPacket(implicit p: Parameters) extends CherrySpringsBundle {
-  val pc         = UInt(xLen.W)
-  val instr      = UInt(32.W)
-  val valid      = Bool()
-  val page_fault = Bool()
+  val pc           = UInt(xLen.W)
+  val instr        = UInt(32.W)
+  val valid        = Bool()
+  val page_fault   = Bool()
+  val access_fault = Bool()
+
+  override def toPrintable: Printable = {
+    cf"v=$valid pc=$pc%x instr=$instr%x pf=$page_fault af=$access_fault"
+  }
 }
 
 class DXPacket(implicit p: Parameters) extends CherrySpringsBundle {
@@ -50,11 +55,20 @@ class CachePortReq(implicit p: Parameters) extends CherrySpringsBundle {
   val wdata = Output(UInt(xLen.W))
   val wmask = Output(UInt((xLen / 8).W))
   val wen   = Output(Bool())
+
+  override def toPrintable: Printable = {
+    cf"addr=$addr%x wdata=$wdata%x wmask=$wmask%x wen=$wen"
+  }
 }
 
 class CachePortResp(implicit p: Parameters) extends CherrySpringsBundle {
-  val rdata      = Output(UInt(xLen.W))
-  val page_fault = Output(Bool())
+  val rdata        = Output(UInt(xLen.W))
+  val page_fault   = Output(Bool())
+  val access_fault = Output(Bool())
+
+  override def toPrintable: Printable = {
+    cf"rdata=$rdata%x pf=$page_fault af=$access_fault"
+  }
 }
 
 class CachePortIO(implicit p: Parameters) extends CherrySpringsBundle {

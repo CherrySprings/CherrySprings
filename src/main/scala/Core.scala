@@ -35,7 +35,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   imem_proxy.io.in         <> ifu.io.imem
   imem_proxy.io.out        <> io.imem
   imem_proxy.io.ptw        <> io.iptw
-  imem_proxy.io.prv_mpp    := prv
+  imem_proxy.io.prv        := prv
   imem_proxy.io.sv39_en    := sv39_en
   imem_proxy.io.satp_ppn   := satp_ppn
   imem_proxy.io.sfence_vma := sfence_vma
@@ -104,9 +104,9 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     alu.io.out
   )
 
-  val is_mem   = id_ex.io.out.uop.fu === s"b$FU_LSU".U
-  val is_mdu   = id_ex.io.out.uop.fu === s"b$FU_MDU".U
-  val is_csr   = id_ex.io.out.uop.fu === s"b$FU_CSR".U
+  val is_mem   = (id_ex.io.out.uop.fu === s"b$FU_LSU".U) && id_ex.io.out.uop.valid
+  val is_mdu   = (id_ex.io.out.uop.fu === s"b$FU_MDU".U) && id_ex.io.out.uop.valid
+  val is_csr   = (id_ex.io.out.uop.fu === s"b$FU_CSR".U) && id_ex.io.out.uop.valid
   val is_store = isStore(id_ex.io.out.uop.lsu_op)
   val is_amo   = isAmo(id_ex.io.out.uop.lsu_op)
 
@@ -145,7 +145,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   dmem_proxy.io.in         <> lsu.io.dmem
   dmem_proxy.io.out        <> io.dmem
   dmem_proxy.io.ptw        <> io.dptw
-  dmem_proxy.io.prv_mpp    := Mux(csr.io.mprv, csr.io.mpp, prv)
+  dmem_proxy.io.prv        := Mux(csr.io.mprv, csr.io.mpp, prv)
   dmem_proxy.io.sv39_en    := sv39_en
   dmem_proxy.io.satp_ppn   := satp_ppn
   dmem_proxy.io.sfence_vma := sfence_vma

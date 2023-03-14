@@ -46,8 +46,8 @@ class CachePortToTileLinkBridge(name: String)(implicit p: Parameters)
     val (_, get_bits) = edge.Get(source, req_addr, 3.U)
     val (_, put_bits) = edge.Put(source, req_addr, 3.U, req_wdata, req_wmask)
 
-    tl.a.bits            := Mux(req.bits.wen, put_bits, get_bits)
-    resp.bits.rdata      := tl.d.bits.data
-    resp.bits.page_fault := false.B
+    tl.a.bits       := Mux(req.bits.wen, put_bits, get_bits)
+    resp.bits       := 0.U.asTypeOf(new CachePortResp)
+    resp.bits.rdata := tl.d.bits.data
   }
 }

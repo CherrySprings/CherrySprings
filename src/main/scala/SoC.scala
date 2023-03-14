@@ -11,18 +11,19 @@ class SoC(implicit p: Parameters) extends LazyModule {
   val bridge_dmem = LazyModule(new CachePortToTileLinkBridge("dmem"))
   val bridge_iptw = LazyModule(new CachePortToTileLinkBridge("iptw"))
   val bridge_dptw = LazyModule(new CachePortToTileLinkBridge("dptw"))
-  val xbar        = LazyModule(new TLXbar)
+  val xbar        = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
   val node        = TLIdentityNode()
 
   // interrupt sinks
   val clint_int_sink = IntSinkNode(IntSinkPortSimple(1, 2))
   val plic_int_sink  = IntSinkNode(IntSinkPortSimple(2, 1))
 
+  // don't modify order of following nodes
   // xbar.node := icache.node
-  xbar.node := bridge_imem.node
-  xbar.node := bridge_dmem.node
-  xbar.node := bridge_iptw.node
-  xbar.node := bridge_dptw.node
+  xbar.node := bridge_imem.node // 0
+  xbar.node := bridge_iptw.node // 1
+  xbar.node := bridge_dmem.node // 2
+  xbar.node := bridge_dptw.node // 3
   node      := xbar.node
 
   lazy val module = new LazyModuleImp(this) {

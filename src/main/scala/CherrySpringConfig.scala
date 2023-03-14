@@ -1,6 +1,5 @@
 import chipsalliance.rocketchip.config._
 import chisel3._
-import freechips.rocketchip.devices.debug.Debug
 
 case object EnableDifftest extends Field[Boolean]
 case object ResetPC extends Field[BigInt]
@@ -24,7 +23,9 @@ trait HasCherrySpringsParameters {
   def paddrLen:         Int     = 32
   def vaddrLen:         Int     = 39
   def sourceRange:      Int     = 4
+  def debugInstrFetch:  Boolean = false
   def debugInstrCommit: Boolean = false
+  def debugPortProxy:   Boolean = false
 }
 
 abstract class CherrySpringsModule(implicit val p: Parameters) extends Module with HasCherrySpringsParameters

@@ -40,7 +40,7 @@ class IF1(implicit p: Parameters) extends CherrySpringsModule {
     io.resp.fire
   )
 
-  val state_to_wait = io.resp.bits.page_fault && !jmp_r && !io.jmp_packet.valid
+  val state_to_wait = (io.resp.bits.page_fault || io.resp.bits.access_fault) && !jmp_r && !io.jmp_packet.valid
 
   switch(state) {
     is(s_init) {
@@ -50,7 +50,8 @@ class IF1(implicit p: Parameters) extends CherrySpringsModule {
     }
     is(s_resp) {
       when(io.resp.fire) {
-        state := Mux(state_to_wait, s_wait, Mux(io.jmp_packet.valid, s_init, s_resp))
+        state := Mux(io.jmp_packet.valid, s_init, s_resp)
+        // Mux(state_to_wait, s_wait, Mux(io.jmp_packet.valid, s_init, s_resp))
       }
     }
     is(s_wait) {
@@ -60,7 +61,7 @@ class IF1(implicit p: Parameters) extends CherrySpringsModule {
     }
   }
 
-  io.resp.ready := (io.stall_b || io.jmp_packet.valid) && (state === s_resp)
+  io.resp.ready := ((io.stall_b || io.jmp_packet.valid) && (state === s_resp)) || (state === s_init)
 
   io.out       := 0.U.asTypeOf(new FDPacket)
   io.out.valid := io.resp.fire && !io.jmp_packet.valid && !jmp_r
@@ -96,8 +97,15 @@ class IFU(implicit p: Parameters) extends CherrySpringsModule {
   pc_queue.io.enq.valid := io.imem.req.fire
   pc_queue.io.deq.ready := io.imem.resp.fire
 
-  io.out            := if1.io.out
-  io.out.pc         := SignExt39_64(pc_queue.io.deq.bits)
-  io.out.instr      := Mux(io.out.pc(2), io.imem.resp.bits.rdata(63, 32), io.imem.resp.bits.rdata(31, 0))
-  io.out.page_fault := io.imem.resp.bits.page_fault
+  io.out              := if1.io.out
+  io.out.pc           := SignExt39_64(pc_queue.io.deq.bits)
+  io.out.instr        := Mux(io.out.pc(2), io.imem.resp.bits.rdata(63, 32), io.imem.resp.bits.rdata(31, 0))
+  io.out.page_fault   := io.imem.resp.bits.page_fault
+  io.out.access_fault := io.imem.resp.bits.access_fault
+
+  if (debugInstrFetch) {
+    when(io.out.valid) {
+      printf(cf"${DebugTimer()} [IFU] ${io.out}\n")
+    }
+  }
 }

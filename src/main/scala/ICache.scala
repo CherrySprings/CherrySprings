@@ -114,12 +114,12 @@ class ICache(size: Int)(implicit p: Parameters) extends LazyModule with HasCherr
       tag(getIndex(addr_r))   := getTag(addr_r)
     }
 
-    req.ready            := state === s_check
-    tl.a.valid           := state === s_req
-    tl.a.bits            := get_bits
-    tl.d.ready           := state === s_resp
-    resp.valid           := state === s_ok
-    resp.bits.rdata      := rdata
-    resp.bits.page_fault := false.B
+    req.ready       := state === s_check
+    tl.a.valid      := state === s_req
+    tl.a.bits       := get_bits
+    tl.d.ready      := state === s_resp
+    resp.valid      := state === s_ok
+    resp.bits       := 0.U.asTypeOf(new CachePortResp)
+    resp.bits.rdata := rdata
   }
 }
