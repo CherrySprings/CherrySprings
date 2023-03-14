@@ -90,6 +90,10 @@ class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39
   def vpn()    = Cat(vpn2, vpn1, vpn0)
   def vpn2mb() = Cat(vpn2, vpn1)
   def vpn1gb() = vpn2
+
+  override def toPrintable: Printable = {
+    cf"{vpn2=$vpn2%x vpn1=$vpn1%x vpn0=$vpn0%x offset=$offset%x}"
+  }
 }
 
 class Sv39PhysAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -99,6 +103,10 @@ class Sv39PhysAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39
   val offset = UInt(offsetLen.W)
 
   def ppn() = Cat(ppn2, ppn1, ppn0)
+
+  override def toPrintable: Printable = {
+    cf"{ppn2=$ppn2%x ppn1=$ppn1%x ppn0=$ppn0%x offset=$offset%x}"
+  }
 }
 
 class Sv39PTEFlag(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -111,6 +119,10 @@ class Sv39PTEFlag(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
   val w   = Bool()
   val r   = Bool()
   val v   = Bool()
+
+  override def toPrintable: Printable = {
+    cf"$rsw%b$d$a$g$u$x$w$r$v"
+  }
 }
 
 class Sv39PTE(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -120,6 +132,10 @@ class Sv39PTE(implicit p: Parameters) extends CherrySpringsBundle with Sv39Param
   val flag = new Sv39PTEFlag
 
   def ppn() = Cat(ppn2, ppn1, ppn0)
+
+  override def toPrintable: Printable = {
+    cf"{ppn2=$ppn2%x ppn1=$ppn1%x ppn0=$ppn0%x flag=$flag}"
+  }
 }
 
 class TLB4KBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {

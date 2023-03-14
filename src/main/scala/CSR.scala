@@ -742,6 +742,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     status_sie  := 0.U
     status_spp  := prv
     prv         := PRV.S.U
+    io.prv      := PRV.S.U // bypass
     trap_pc     := Cat(stvec(xLen - 1, 2) + Mux(is_int && (stvec(1, 0) === 1.U), cause_int, 0.U), 0.U(2.W))
   }
   when(!trap_to_s && trap) {
@@ -752,6 +753,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     mstatus_mie  := 0.U
     mstatus_mpp  := prv
     prv          := PRV.M.U
+    io.prv       := PRV.M.U // bypass
     trap_pc      := Cat(mtvec(xLen - 1, 2) + Mux(is_int && (mtvec(1, 0) === 1.U), cause_int, 0.U), 0.U(2.W))
   }
 

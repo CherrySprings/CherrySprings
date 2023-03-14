@@ -23,9 +23,10 @@ trait HasCherrySpringsParameters {
   def paddrLen:         Int     = 32
   def vaddrLen:         Int     = 39
   def sourceRange:      Int     = 4
-  def debugInstrFetch:  Boolean = false
-  def debugInstrCommit: Boolean = false
-  def debugPortProxy:   Boolean = false
+  def debugInstrFetch:  Boolean = true
+  def debugInstrCommit: Boolean = true
+  def debugPortProxy:   Boolean = true
+  def debugTLB:         Boolean = true
 }
 
 abstract class CherrySpringsModule(implicit val p: Parameters) extends Module with HasCherrySpringsParameters

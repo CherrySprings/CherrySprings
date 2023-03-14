@@ -85,7 +85,7 @@ class IFU(implicit p: Parameters) extends CherrySpringsModule {
 
   if0.io.jmp_packet := io.jmp_packet
   if0.io.req        <> io.imem.req
-  if0.io.stall_b    := pc_queue.io.enq.ready
+  if0.io.stall_b    := pc_queue.io.enq.ready && io.stall_b
 
   if1.io.jmp_packet     := io.jmp_packet
   if1.io.resp           <> io.imem.resp

@@ -2,6 +2,7 @@ import chisel3._
 import chisel3.util._
 import Constant._
 import chipsalliance.rocketchip.config._
+import chisel3.util.random._
 
 case object IsITLB extends Field[Boolean]
 case object IsDTLB extends Field[Boolean]
@@ -45,18 +46,28 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   assert(io.rlevel =/= 3.U)
   assert(io.wlevel =/= 3.U)
 
+  // random replacement
+  val replace_idx = Wire(UInt(log2Up(tlb4kb_size).W))
+  replace_idx := LFSR(16)
+
   /*
    * TLB - 4 KB page
    */
   val tlb4kb_size    = 16
   val array4kb       = RegInit(VecInit(Seq.fill(tlb4kb_size)(0.U.asTypeOf(new TLB4KBEntry))))
   val array4kb_valid = RegInit(VecInit(Seq.fill(tlb4kb_size)(false.B))) // not "valid" in PTE
-  val array4kb_rdata = Wire(new TLB4KBEntry)
+  val array4kb_rdata = WireDefault(0.U.asTypeOf(new TLB4KBEntry))
   val array4kb_wdata = Wire(new TLB4KBEntry)
-  val hit4kb         = Wire(Bool())
-  // read, index by lower bits of vaddr vpn0
-  array4kb_rdata := array4kb(io.vaddr.vpn0)
-  hit4kb         := array4kb_valid(io.vaddr.vpn0) && (array4kb_rdata.vpn === io.vaddr.vpn)
+  val hit4kb         = WireDefault(false.B)
+  val hit4kb_way     = WireDefault(0.U(log2Up(tlb4kb_size).W))
+  // read
+  for (i <- 0 until tlb4kb_size) {
+    when(array4kb_valid(i) && (array4kb(i).vpn === io.vaddr.vpn)) {
+      hit4kb         := true.B
+      hit4kb_way     := i.U
+      array4kb_rdata := array4kb(i)
+    }
+  }
   // set wdata
   array4kb_wdata.flag := io.wpte.flag
   array4kb_wdata.vpn2 := io.wvaddr.vpn2
@@ -66,9 +77,8 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   array4kb_wdata.ppn1 := io.wpte.ppn1
   array4kb_wdata.ppn0 := io.wpte.ppn0
   when(io.wen && (io.wlevel === 0.U)) {
-    // index by lower bits of wvaddr vpn0
-    array4kb(io.wvaddr.vpn0)       := array4kb_wdata
-    array4kb_valid(io.wvaddr.vpn0) := true.B
+    array4kb(replace_idx)       := array4kb_wdata
+    array4kb_valid(replace_idx) := true.B
   }
   when(io.sfence_vma) {
     for (i <- 0 until tlb4kb_size) {
