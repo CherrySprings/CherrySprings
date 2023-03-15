@@ -164,7 +164,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   paddr.ppn2   := pte.ppn2
 
   // forward in req port to out req port
-  io.in.req.ready := (state === s_idle) && (io.out.req.ready || access_fault || (atp_en && !tlb.io.hit))
+  io.in.req.ready := (state === s_idle) && (io.out.req.ready || access_fault || (atp_en && (!tlb.io.hit || page_fault)))
   io.out.req.valid := ((state === s_idle) && ((tlb.io.hit && !page_fault) || (!atp_en && !access_fault)) && io.in.req.valid) ||
     (state === s_ptw_complete && !page_fault)
   io.out.req.bits := in_req_bits
