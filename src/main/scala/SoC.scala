@@ -6,7 +6,7 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
 
 class SoC(implicit p: Parameters) extends LazyModule {
-  val icache      = LazyModule(new ICache(32))
+  val icache      = LazyModule(new ICache)
   val bridge_dmem = LazyModule(new CachePortToTileLinkBridge("dmem"))
   val bridge_iptw = LazyModule(new CachePortToTileLinkBridge("iptw"))
   val bridge_dptw = LazyModule(new CachePortToTileLinkBridge("dptw"))

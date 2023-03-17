@@ -81,7 +81,7 @@ class IFU(implicit p: Parameters) extends CherrySpringsModule {
 
   val if0      = Module(new IF0)
   val if1      = Module(new IF1)
-  val pc_queue = Module(new Queue(UInt(vaddrLen.W), 2))
+  val pc_queue = Module(new Queue(UInt(vaddrLen.W), 1, pipe = true))
 
   if0.io.jmp_packet := io.jmp_packet
   if0.io.req        <> io.imem.req

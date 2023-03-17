@@ -76,11 +76,6 @@ class CachePortIO(implicit p: Parameters) extends CherrySpringsBundle {
   val resp = Flipped(Decoupled(new CachePortResp))
 }
 
-class AddrTransPortReq(implicit p: Parameters) extends CherrySpringsBundle {
-  val vaddr = Output(new Sv39VirtAddr)
-  val wen   = Output(Bool())
-}
-
 class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
   val vpn2   = UInt(vpn2Len.W)
   val vpn1   = UInt(vpn1Len.W)
@@ -166,4 +161,11 @@ class TLB1GBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
   val ppn2 = UInt(ppn2Len.W)
 
   def vpn1gb() = vpn2
+}
+
+class ICacheEntry(implicit p: Parameters) extends CherrySpringsBundle {
+  val tag  = UInt((paddrLen - (5 + log2Up(cacheNumSets))).W)
+  val data = UInt(256.W)
+
+  def len() = this.getWidth
 }
