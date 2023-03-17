@@ -647,6 +647,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val mret_legal = prv_is_m
   when(is_mret && mret_legal) {
     prv          := mstatus_mpp
+    io.prv       := mstatus_mpp // bypass
     mstatus_mie  := mstatus_mpie
     mstatus_mpie := 1.U
     mstatus_mpp  := PRV.U.U
@@ -659,6 +660,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val sret_legal = prv_is_ms && !mstatus_tsr.asBool
   when(is_sret && sret_legal) {
     prv         := status_spp
+    io.prv      := status_spp // bypass
     status_sie  := status_spie
     status_spie := 1.U
     status_spp  := PRV.U.U
@@ -740,6 +742,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     status_sie  := 0.U
     status_spp  := prv
     prv         := PRV.S.U
+    io.prv      := PRV.S.U // bypass
     trap_pc     := Cat(stvec(xLen - 1, 2) + Mux(is_int && (stvec(1, 0) === 1.U), cause_int, 0.U), 0.U(2.W))
   }
   when(!trap_to_s && trap) {
@@ -750,6 +753,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     mstatus_mie  := 0.U
     mstatus_mpp  := prv
     prv          := PRV.M.U
+    io.prv       := PRV.M.U // bypass
     trap_pc      := Cat(mtvec(xLen - 1, 2) + Mux(is_int && (mtvec(1, 0) === 1.U), cause_int, 0.U), 0.U(2.W))
   }
 

@@ -56,8 +56,10 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     )
   }
 
-  val resp_data       = resp.bits.rdata >> (addr_offset << 3)
-  val resp_page_fault = resp.bits.page_fault
+  val resp_data         = resp.bits.rdata >> (addr_offset << 3)
+  val resp_page_fault   = resp.bits.page_fault
+  val resp_access_fault = resp.bits.access_fault
+
   val ld_out          = Wire(UInt(xLen.W))
   val ldu_out         = Wire(UInt(xLen.W))
   val ld_out_amo      = RegInit(0.U(xLen.W))
@@ -115,7 +117,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     }
     is(s_resp) {
       when(resp.fire || sc_completed) {
-        state := Mux(resp_page_fault, s_exc, s_idle)
+        state := Mux(resp_page_fault || resp_access_fault, s_exc, s_idle)
       }
     }
     is(s_amo_ld_req) {
@@ -125,7 +127,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     }
     is(s_amo_ld_resp) {
       when(resp.fire) {
-        state := Mux(resp_page_fault, s_exc, s_amo_st_req)
+        state := Mux(resp_page_fault || resp_access_fault, s_exc, s_amo_st_req)
       }
     }
     is(s_amo_st_req) {
@@ -135,7 +137,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     }
     is(s_amo_st_resp) {
       when(resp.fire) {
-        state := Mux(resp_page_fault, s_exc, s_idle)
+        state := Mux(resp_page_fault || resp_access_fault, s_exc, s_idle)
       }
     }
     is(s_exc) {
@@ -207,51 +209,33 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   )
 
   io.rdata := Mux(is_sc, (!sc_succeed).asUInt, Mux(io.is_amo, ld_out_amo, Mux(is_ldu, ldu_out, ld_out)))
-  io.valid := (state === s_resp || state === s_amo_st_resp) && (resp.fire && !resp.bits.page_fault) || sc_completed || (state === s_exc) // assert for only 1 cycle
+  io.valid := (state === s_resp || state === s_amo_st_resp) && (resp.fire && !resp.bits.page_fault && !resp.bits.access_fault) ||
+    sc_completed || (state === s_exc) // assert for only 1 cycle
   io.ready := ((state === s_idle) && !io.is_mem) || io.valid
 
   /*
    * exc_code Description
    *        0 Load/store/AMO instruction is executed without exception (different from ISA, 0 for Instruction address misaligned)
    *        4 Load address misaligned
-   *        5 Load access fault             (not implemented yet)
+   *        5 Load access fault
    *        6 Store/AMO address misaligned
-   *        7 Store/AMO access fault        (not implemented yet)
+   *        7 Store/AMO access fault
    *       13 Load page fault
    *       15 Store/AMO page fault
    */
   val exc_code =
     Mux(
       io.is_store || io.is_amo,
-      Mux(misaligned, Causes.misaligned_store.U, Causes.store_page_fault.U),
-      Mux(misaligned, Causes.misaligned_load.U, Causes.load_page_fault.U)
+      Mux(
+        misaligned,
+        Causes.misaligned_store.U,
+        Mux(RegNext(resp_access_fault), Causes.store_access.U, Causes.store_page_fault.U)
+      ),
+      Mux(
+        misaligned,
+        Causes.misaligned_load.U,
+        Mux(RegNext(resp_access_fault), Causes.load_access.U, Causes.load_page_fault.U)
+      )
     )
   io.exc_code := Mux(state === s_exc, exc_code, 0.U)
-
-  if (debugLoadStore) {
-    when(io.dmem.req.fire) {
-      when(io.dmem.req.bits.wen) {
-        printf(
-          "%d [STORE-REQ ] addr=%x wdata=%x wmask=%x\n",
-          DebugTimer(),
-          io.dmem.req.bits.addr,
-          io.dmem.req.bits.wdata,
-          io.dmem.req.bits.wmask
-        )
-      }.otherwise {
-        printf(
-          "%d [LOAD -REQ ] addr=%x\n",
-          DebugTimer(),
-          io.dmem.req.bits.addr
-        )
-      }
-    }
-    when(io.dmem.resp.fire) {
-      printf(
-        "%d [     -RESP] rdata=%x\n",
-        DebugTimer(),
-        io.dmem.resp.bits.rdata
-      )
-    }
-  }
 }

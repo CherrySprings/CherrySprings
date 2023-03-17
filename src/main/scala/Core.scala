@@ -23,9 +23,6 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   val satp_ppn   = Wire(UInt(44.W))
   val sfence_vma = Wire(Bool())
 
-  val stall_b = Wire(Bool())
-  val flush   = Wire(Bool())
-
   /* ----- Stage 1 - Instruction Fetch (IF) -------- */
 
   val ifu = Module(new IFU)
@@ -38,23 +35,30 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   imem_proxy.io.in         <> ifu.io.imem
   imem_proxy.io.out        <> io.imem
   imem_proxy.io.ptw        <> io.iptw
-  imem_proxy.io.prv_mpp    := prv
+  imem_proxy.io.prv        := prv
   imem_proxy.io.sv39_en    := sv39_en
   imem_proxy.io.satp_ppn   := satp_ppn
   imem_proxy.io.sfence_vma := sfence_vma
-  ifu.io.stall_b           := stall_b
   ifu.io.jmp_packet.valid  := alu_jmp_packet.valid || sys_jmp_packet.valid
   ifu.io.jmp_packet.target := Mux(sys_jmp_packet.valid, sys_jmp_packet.target, alu_jmp_packet.target)
 
-  val if_id = Module(new PipelineReg(new FDPacket))
-  if_id.io.in    <> ifu.io.out
-  if_id.io.en    := stall_b
-  if_id.io.flush := flush
+  /* ----- Stage 2 - Instruction Buffer (IB) ------- */
 
-  /* ----- Stage 2 - Instruction Decode (ID) ------- */
+  val stall_b = Wire(Bool())
+  val flush   = Wire(Bool())
+
+  val instr_buffer = Module(new Queue(new FDPacket, entries = 4, pipe = true, hasFlush = true))
+  ifu.io.stall_b            := instr_buffer.io.enq.ready
+  instr_buffer.io.enq.bits  := ifu.io.out
+  instr_buffer.io.enq.valid := ifu.io.out.valid
+  instr_buffer.io.deq.ready := stall_b
+  instr_buffer.io.flush.get := flush
+
+  /* ----- Stage 3 - Instruction Decode (ID) ------- */
 
   val decode = Module(new Decode)
-  decode.io.in <> if_id.io.out
+  decode.io.in       := instr_buffer.io.deq.bits
+  decode.io.in.valid := instr_buffer.io.deq.fire
 
   val rf = Module(new RegFile)
   rf.io.rs1_index := decode.io.out.rs1_index
@@ -71,7 +75,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   id_ex.io.en                  := stall_b
   id_ex.io.flush               := flush
 
-  /* ----- Stage 3 - Execution (EX) ---------------- */
+  /* ----- Stage 4 - Execution (EX) ---------------- */
 
   val alu = Module(new ALU)
   alu.io.uop := id_ex.io.out.uop
@@ -100,9 +104,9 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     alu.io.out
   )
 
-  val is_mem   = id_ex.io.out.uop.fu === s"b$FU_LSU".U
-  val is_mdu   = id_ex.io.out.uop.fu === s"b$FU_MDU".U
-  val is_csr   = id_ex.io.out.uop.fu === s"b$FU_CSR".U
+  val is_mem   = (id_ex.io.out.uop.fu === s"b$FU_LSU".U) && id_ex.io.out.uop.valid
+  val is_mdu   = (id_ex.io.out.uop.fu === s"b$FU_MDU".U) && id_ex.io.out.uop.valid
+  val is_csr   = (id_ex.io.out.uop.fu === s"b$FU_CSR".U) && id_ex.io.out.uop.valid
   val is_store = isStore(id_ex.io.out.uop.lsu_op)
   val is_amo   = isAmo(id_ex.io.out.uop.lsu_op)
 
@@ -141,7 +145,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   dmem_proxy.io.in         <> lsu.io.dmem
   dmem_proxy.io.out        <> io.dmem
   dmem_proxy.io.ptw        <> io.dptw
-  dmem_proxy.io.prv_mpp    := Mux(csr.io.mprv, csr.io.mpp, prv)
+  dmem_proxy.io.prv        := Mux(csr.io.mprv, csr.io.mpp, prv)
   dmem_proxy.io.sv39_en    := sv39_en
   dmem_proxy.io.satp_ppn   := satp_ppn
   dmem_proxy.io.sfence_vma := sfence_vma
@@ -164,7 +168,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       s"b$FU_CSR".U -> csr.io.rw.rdata
     )
   )
-  ex_wb.io.en    := lsu.io.ready && mdu.io.ready
+  ex_wb.io.en    := true.B
   ex_wb.io.flush := false.B
 
   /* ----- Stage 5 - Write Back (WB) --------------- */
@@ -192,7 +196,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       decode.io.out.rs1_src,
       0.U,
       Array(
-        s"b$RS_PC".U  -> ZeroExt32_64(if_id.io.out.pc),
+        s"b$RS_PC".U  -> ZeroExt32_64(instr_buffer.io.deq.bits.pc),
         s"b$RS_RF".U  -> rf.io.rs1_data,
         s"b$RS_IMM".U -> SignExt32_64(decode.io.out.imm)
       )
@@ -210,7 +214,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       decode.io.out.rs2_src,
       0.U,
       Array(
-        s"b$RS_PC".U  -> ZeroExt32_64(if_id.io.out.pc),
+        s"b$RS_PC".U  -> ZeroExt32_64(instr_buffer.io.deq.bits.pc),
         s"b$RS_RF".U  -> rf.io.rs2_data,
         s"b$RS_IMM".U -> SignExt32_64(decode.io.out.imm)
       )
@@ -237,6 +241,8 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   val mcycle   = csr.io.cycle // machine cycle counter
   val minstret = csr.io.instret // machine instructions-retired counter
   csr.io.commit := commit_uop.valid.asUInt
+
+  /* ----- Processor Difftest -------------------- */
 
   if (enableDifftest) {
     val is_mmio = WireDefault(false.B)
@@ -273,7 +279,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     diff_ic.io.sqIdx   := 0.U
     diff_ic.io.isLoad  := (commit_uop.lsu_op === s"b$LSU_LD".U) || (commit_uop.lsu_op === s"b$LSU_LDU".U)
     diff_ic.io.isStore := (commit_uop.lsu_op === s"b$LSU_ST".U)
-    if (debugCommit) {
+    if (debugInstrCommit) {
       when(commit_uop.valid) {
         printf(
           "%d [COMMIT] pc=%x instr=%x wen=%x wdest=%d prv=%d\n",

@@ -3,10 +3,15 @@ import chisel3.util._
 import chipsalliance.rocketchip.config._
 
 class FDPacket(implicit p: Parameters) extends CherrySpringsBundle {
-  val pc         = UInt(xLen.W)
-  val instr      = UInt(32.W)
-  val valid      = Bool()
-  val page_fault = Bool()
+  val pc           = UInt(xLen.W)
+  val instr        = UInt(32.W)
+  val valid        = Bool()
+  val page_fault   = Bool()
+  val access_fault = Bool()
+
+  override def toPrintable: Printable = {
+    cf"v=$valid pc=$pc%x instr=$instr%x pf=$page_fault af=$access_fault"
+  }
 }
 
 class DXPacket(implicit p: Parameters) extends CherrySpringsBundle {
@@ -50,31 +55,25 @@ class CachePortReq(implicit p: Parameters) extends CherrySpringsBundle {
   val wdata = Output(UInt(xLen.W))
   val wmask = Output(UInt((xLen / 8).W))
   val wen   = Output(Bool())
+
+  override def toPrintable: Printable = {
+    cf"addr=$addr%x wdata=$wdata%x wmask=$wmask%x wen=$wen"
+  }
 }
 
 class CachePortResp(implicit p: Parameters) extends CherrySpringsBundle {
-  val rdata      = Output(UInt(xLen.W))
-  val page_fault = Output(Bool())
+  val rdata        = Output(UInt(xLen.W))
+  val page_fault   = Output(Bool())
+  val access_fault = Output(Bool())
+
+  override def toPrintable: Printable = {
+    cf"rdata=$rdata%x pf=$page_fault af=$access_fault"
+  }
 }
 
 class CachePortIO(implicit p: Parameters) extends CherrySpringsBundle {
   val req  = Decoupled(new CachePortReq)
   val resp = Flipped(Decoupled(new CachePortResp))
-}
-
-class AddrTransPortReq(implicit p: Parameters) extends CherrySpringsBundle {
-  val vaddr = Output(new Sv39VirtAddr)
-  val wen   = Output(Bool())
-}
-
-class AddrTransPortResp(implicit p: Parameters) extends CherrySpringsBundle {
-  val paddr      = Output(new Sv39PhysAddr)
-  val page_fault = Output(Bool())
-}
-
-class AddrTransPortIO(implicit p: Parameters) extends CherrySpringsBundle {
-  val req  = Decoupled(new AddrTransPortReq)
-  val resp = Flipped(Decoupled(new AddrTransPortResp))
 }
 
 class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -85,6 +84,11 @@ class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39
 
   def vpn()    = Cat(vpn2, vpn1, vpn0)
   def vpn2mb() = Cat(vpn2, vpn1)
+  def vpn1gb() = vpn2
+
+  override def toPrintable: Printable = {
+    cf"{vpn2=$vpn2%x vpn1=$vpn1%x vpn0=$vpn0%x offset=$offset%x}"
+  }
 }
 
 class Sv39PhysAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -94,6 +98,10 @@ class Sv39PhysAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39
   val offset = UInt(offsetLen.W)
 
   def ppn() = Cat(ppn2, ppn1, ppn0)
+
+  override def toPrintable: Printable = {
+    cf"{ppn2=$ppn2%x ppn1=$ppn1%x ppn0=$ppn0%x offset=$offset%x}"
+  }
 }
 
 class Sv39PTEFlag(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -106,6 +114,10 @@ class Sv39PTEFlag(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
   val w   = Bool()
   val r   = Bool()
   val v   = Bool()
+
+  override def toPrintable: Printable = {
+    cf"$rsw%b$d$a$g$u$x$w$r$v"
+  }
 }
 
 class Sv39PTE(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -115,6 +127,10 @@ class Sv39PTE(implicit p: Parameters) extends CherrySpringsBundle with Sv39Param
   val flag = new Sv39PTEFlag
 
   def ppn() = Cat(ppn2, ppn1, ppn0)
+
+  override def toPrintable: Printable = {
+    cf"{ppn2=$ppn2%x ppn1=$ppn1%x ppn0=$ppn0%x flag=$flag}"
+  }
 }
 
 class TLB4KBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
@@ -141,6 +157,15 @@ class TLB2MBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
 
 class TLB1GBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
   val flag = new Sv39PTEFlag
-  val vpn  = UInt((vpnLen - vpn0Len - vpn1Len).W)
-  val ppn  = UInt((ppnLen - ppn0Len - ppn1Len).W)
+  val vpn2 = UInt(vpn2Len.W)
+  val ppn2 = UInt(ppn2Len.W)
+
+  def vpn1gb() = vpn2
+}
+
+class ICacheEntry(implicit p: Parameters) extends CherrySpringsBundle {
+  val tag  = UInt((paddrLen - (5 + log2Up(cacheNumSets))).W)
+  val data = UInt(256.W)
+
+  def len() = this.getWidth
 }

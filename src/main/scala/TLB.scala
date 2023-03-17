@@ -2,6 +2,7 @@ import chisel3._
 import chisel3.util._
 import Constant._
 import chipsalliance.rocketchip.config._
+import chisel3.util.random._
 
 case object IsITLB extends Field[Boolean]
 case object IsDTLB extends Field[Boolean]
@@ -26,54 +27,58 @@ trait Sv39Parameters extends HasCherrySpringsParameters {
 }
 
 class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameters {
-  require(xLen == 64)
-
-  def is_leaf(p: Sv39PTE) = p.flag.r || p.flag.x
-
   val io = IO(new Bundle {
     val prv        = Input(UInt(2.W))
-    val satp_ppn   = Input(UInt(44.W))
     val sfence_vma = Input(Bool())
-    val addr_trans = Flipped(new AddrTransPortIO)
-    val ptw        = new CachePortIO
+    // read TLB
+    val vaddr  = Input(new Sv39VirtAddr)
+    val rpte   = Output(new Sv39PTE)
+    val rlevel = Output(UInt(2.W))
+    val hit    = Output(Bool())
+    // write TLB
+    val wen    = Input(Bool())
+    val wvaddr = Input(new Sv39VirtAddr)
+    val wpte   = Input(new Sv39PTE)
+    val wlevel = Input(UInt(2.W))
   })
 
-  val req_reg = RegInit(0.U.asTypeOf(new AddrTransPortReq))
+  // 0: 4KB, 1: 2MB, 2: 1GB, 3: invalid
+  assert(io.rlevel =/= 3.U)
+  assert(io.wlevel =/= 3.U)
 
-  when(io.addr_trans.req.fire) {
-    req_reg := io.addr_trans.req.bits
-  }
+  // random replacement
+  val replace_idx = Wire(UInt(log2Up(tlb4kb_size).W))
+  replace_idx := LFSR(16)
 
-  val s_req :: s_resp :: s_ptw_req :: s_ptw_resp :: s_tlb :: Nil = Enum(5)
-  val state                                                      = RegInit(s_req)
-
-  val pt_level = RegInit(0.U(2.W))
-  assert(pt_level < pageTableLevels.U)
-
-  val pte     = Wire(new Sv39PTE)
-  val pte_reg = RegEnable(pte, 0.U.asTypeOf(new Sv39PTE), io.ptw.resp.fire || (state === s_tlb))
-
-  // TLB - 4 KB page
+  /*
+   * TLB - 4 KB page
+   */
   val tlb4kb_size    = 16
-  val array4kb       = Module(new SRAM(tlb4kb_size, tlb4kbEntryLen))
+  val array4kb       = RegInit(VecInit(Seq.fill(tlb4kb_size)(0.U.asTypeOf(new TLB4KBEntry))))
   val array4kb_valid = RegInit(VecInit(Seq.fill(tlb4kb_size)(false.B))) // not "valid" in PTE
-  val array4kb_rdata = Wire(new TLB4KBEntry)
+  val array4kb_rdata = WireDefault(0.U.asTypeOf(new TLB4KBEntry))
   val array4kb_wdata = Wire(new TLB4KBEntry)
-  val hit4kb         = Wire(Bool())
-  array4kb.io.addr    := HoldUnless(io.addr_trans.req.bits.vaddr.vpn0, io.addr_trans.req.fire) // index by LSB by default
-  array4kb_rdata      := array4kb.io.rdata.asTypeOf(new TLB4KBEntry)
-  hit4kb              := array4kb_valid(array4kb.io.addr) && (array4kb_rdata.vpn === io.addr_trans.req.bits.vaddr.vpn)
-  array4kb.io.wen     := io.ptw.resp.fire && is_leaf(pte) && (pt_level === 0.U)
-  array4kb_wdata.flag := pte.flag
-  array4kb_wdata.vpn2 := req_reg.vaddr.vpn2
-  array4kb_wdata.vpn1 := req_reg.vaddr.vpn1
-  array4kb_wdata.vpn0 := req_reg.vaddr.vpn0
-  array4kb_wdata.ppn2 := pte.ppn2
-  array4kb_wdata.ppn1 := pte.ppn1
-  array4kb_wdata.ppn0 := pte.ppn0
-  array4kb.io.wdata   := array4kb_wdata.asUInt
-  when(array4kb.io.wen) {
-    array4kb_valid(array4kb.io.addr) := true.B
+  val hit4kb         = WireDefault(false.B)
+  val hit4kb_way     = WireDefault(0.U(log2Up(tlb4kb_size).W))
+  // read
+  for (i <- 0 until tlb4kb_size) {
+    when(array4kb_valid(i) && (array4kb(i).vpn === io.vaddr.vpn)) {
+      hit4kb         := true.B
+      hit4kb_way     := i.U
+      array4kb_rdata := array4kb(i)
+    }
+  }
+  // set wdata
+  array4kb_wdata.flag := io.wpte.flag
+  array4kb_wdata.vpn2 := io.wvaddr.vpn2
+  array4kb_wdata.vpn1 := io.wvaddr.vpn1
+  array4kb_wdata.vpn0 := io.wvaddr.vpn0
+  array4kb_wdata.ppn2 := io.wpte.ppn2
+  array4kb_wdata.ppn1 := io.wpte.ppn1
+  array4kb_wdata.ppn0 := io.wpte.ppn0
+  when(io.wen && (io.wlevel === 0.U)) {
+    array4kb(replace_idx)       := array4kb_wdata
+    array4kb_valid(replace_idx) := true.B
   }
   when(io.sfence_vma) {
     for (i <- 0 until tlb4kb_size) {
@@ -81,25 +86,28 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
     }
   }
 
-  // TLB - 2 MB page
+  /*
+   * TLB - 2 MB page
+   */
   val tlb2mb_size    = 4
-  val array2mb       = Module(new SRAM(tlb2mb_size, tlb2mbEntryLen))
+  val array2mb       = RegInit(VecInit(Seq.fill(tlb2mb_size)(0.U.asTypeOf(new TLB2MBEntry))))
   val array2mb_valid = RegInit(VecInit(Seq.fill(tlb2mb_size)(false.B)))
   val array2mb_rdata = Wire(new TLB2MBEntry)
   val array2mb_wdata = Wire(new TLB2MBEntry)
   val hit2mb         = Wire(Bool())
-  array2mb.io.addr    := HoldUnless(io.addr_trans.req.bits.vaddr.vpn1, io.addr_trans.req.fire)
-  array2mb_rdata      := array2mb.io.rdata.asTypeOf(new TLB2MBEntry)
-  hit2mb              := array2mb_valid(array2mb.io.addr) && (array2mb_rdata.vpn2mb === io.addr_trans.req.bits.vaddr.vpn2mb)
-  array2mb.io.wen     := io.ptw.resp.fire && is_leaf(pte) && (pt_level === 1.U)
-  array2mb_wdata.flag := pte.flag
-  array2mb_wdata.vpn2 := req_reg.vaddr.vpn2
-  array2mb_wdata.vpn1 := req_reg.vaddr.vpn1
-  array2mb_wdata.ppn2 := pte.ppn2
-  array2mb_wdata.ppn1 := pte.ppn1
-  array2mb.io.wdata   := array2mb_wdata.asUInt
-  when(array2mb.io.wen) {
-    array2mb_valid(array2mb.io.addr) := true.B
+  // read, index by lower bits of vaddr vpn1
+  array2mb_rdata := array2mb(io.vaddr.vpn1)
+  hit2mb         := array2mb_valid(io.vaddr.vpn1) && (array2mb_rdata.vpn2mb === io.vaddr.vpn2mb)
+  // set wdata
+  array2mb_wdata.flag := io.wpte.flag
+  array2mb_wdata.vpn2 := io.wvaddr.vpn2
+  array2mb_wdata.vpn1 := io.wvaddr.vpn1
+  array2mb_wdata.ppn2 := io.wpte.ppn2
+  array2mb_wdata.ppn1 := io.wpte.ppn1
+  when(io.wen && (io.wlevel === 1.U)) {
+    // index by lower bits of wvaddr vpn1
+    array2mb(io.wvaddr.vpn1)       := array2mb_wdata
+    array2mb_valid(io.wvaddr.vpn1) := true.B
   }
   when(io.sfence_vma) {
     for (i <- 0 until tlb2mb_size) {
@@ -107,138 +115,53 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
     }
   }
 
-  pte := io.ptw.resp.bits.rdata.asTypeOf(new Sv39PTE) // default
-  when(state === s_tlb) {
-    when(hit4kb) {
-      pte.flag := array4kb_rdata.flag
-      pte.ppn2 := array4kb_rdata.ppn2
-      pte.ppn1 := array4kb_rdata.ppn1
-      pte.ppn0 := array4kb_rdata.ppn0
-    }.elsewhen(hit2mb) {
-      pte.flag := array2mb_rdata.flag
-      pte.ppn2 := array2mb_rdata.ppn2
-      pte.ppn1 := array2mb_rdata.ppn1
-      pte.ppn0 := 0.U
+  /*
+   * TLB - 1 GB page
+   */
+  val tlb1gb_size    = 2
+  val array1gb       = RegInit(VecInit(Seq.fill(tlb1gb_size)(0.U.asTypeOf(new TLB1GBEntry))))
+  val array1gb_valid = RegInit(VecInit(Seq.fill(tlb1gb_size)(false.B)))
+  val array1gb_rdata = Wire(new TLB1GBEntry)
+  val array1gb_wdata = Wire(new TLB1GBEntry)
+  val hit1gb         = Wire(Bool())
+  // read, index by lower bits of vaddr vpn2
+  array1gb_rdata := array1gb(io.vaddr.vpn2)
+  hit1gb         := array1gb_valid(io.vaddr.vpn2) && (array1gb_rdata.vpn1gb === io.vaddr.vpn1gb)
+  // set wdata
+  array1gb_wdata.flag := io.wpte.flag
+  array1gb_wdata.vpn2 := io.wvaddr.vpn2
+  array1gb_wdata.ppn2 := io.wpte.ppn2
+  when(io.wen && (io.wlevel === 2.U)) {
+    // index by lower bits of wvaddr vpn2
+    array1gb(io.wvaddr.vpn2)       := array1gb_wdata
+    array1gb_valid(io.wvaddr.vpn2) := true.B
+  }
+  when(io.sfence_vma) {
+    for (i <- 0 until tlb1gb_size) {
+      array1gb_valid(i) := false.B
     }
   }
 
-  switch(state) {
-    is(s_req) {
-      when(io.addr_trans.req.fire) {
-        state := s_tlb
-      }
-    }
-    is(s_tlb) {
-      state    := Mux(hit4kb || hit2mb, s_resp, s_ptw_req)
-      pt_level := Mux(hit4kb, 0.U, Mux(hit2mb, 1.U, (pageTableLevels - 1).U))
-    }
-    is(s_ptw_req) {
-      when(io.ptw.req.fire) {
-        state := s_ptw_resp
-      }
-    }
-    is(s_ptw_resp) {
-      when(io.ptw.resp.fire) {
-        when(!pte.flag.v || (!pte.flag.r && pte.flag.w) || is_leaf(pte) || (pt_level === 0.U)) {
-          state := s_resp
-        }.otherwise {
-          state    := s_ptw_req
-          pt_level := pt_level - 1.U
-        }
-      }
-    }
-    is(s_resp) {
-      when(io.addr_trans.resp.fire) {
-        state := s_req
-      }
-    }
-  }
-
-  val l2_addr = Wire(UInt(paddrLen.W))
-  val l1_addr = Wire(UInt(paddrLen.W))
-  val l0_addr = Wire(UInt(paddrLen.W))
-
-  l2_addr := Cat(io.satp_ppn, req_reg.vaddr.vpn2, 0.U(3.W))
-  l1_addr := Cat(pte_reg.ppn, req_reg.vaddr.vpn1, 0.U(3.W))
-  l0_addr := Cat(pte_reg.ppn, req_reg.vaddr.vpn0, 0.U(3.W))
-
-  // check page fault for pte_reg
-  val page_fault = WireDefault(false.B)
-  when(!pte_reg.flag.v || (!pte_reg.flag.r && pte_reg.flag.w)) {
-    page_fault := true.B
-  }
-  when(is_leaf(pte_reg)) {
-    when(io.prv === PRV.U.U && !pte_reg.flag.u) {
-      page_fault := true.B
-    }
-    if (p(IsITLB)) {
-      when(!pte_reg.flag.x) {
-        page_fault := true.B
-      }
-    }
-    if (p(IsDTLB)) {
-      when(req_reg.wen && !pte_reg.flag.w) {
-        page_fault := true.B
-      }
-      when(!req_reg.wen && !pte_reg.flag.r) {
-        page_fault := true.B
-      }
-    }
-    when(
-      (pt_level === 2.U && Cat(pte_reg.ppn1, pte_reg.ppn0) =/= 0.U) ||
-        (pt_level === 1.U && pte_reg.ppn0 =/= 0.U)
-    ) {
-      page_fault := true.B // misaligned superpage
-    }
-    when(!pte_reg.flag.a) {
-      page_fault := true.B
-    }
-    if (p(IsDTLB)) {
-      when(req_reg.wen && !pte_reg.flag.d) {
-        page_fault := true.B
-      }
-    }
-  }
-
-  io.addr_trans.req.ready              := (state === s_req)
-  io.addr_trans.resp.valid             := (state === s_resp)
-  io.addr_trans.resp.bits.page_fault   := page_fault
-  io.addr_trans.resp.bits.paddr.offset := req_reg.vaddr.offset
-  io.addr_trans.resp.bits.paddr.ppn0   := Mux(pt_level > 0.U, req_reg.vaddr.vpn0, pte_reg.ppn0)
-  io.addr_trans.resp.bits.paddr.ppn1   := Mux(pt_level > 1.U, req_reg.vaddr.vpn1, pte_reg.ppn1)
-  io.addr_trans.resp.bits.paddr.ppn2   := pte_reg.ppn2
-
-  io.ptw.req.bits := 0.U.asTypeOf(new CachePortReq)
-  io.ptw.req.bits.addr := MuxLookup(
-    pt_level,
-    0.U,
-    Array(
-      2.U -> l2_addr,
-      1.U -> l1_addr,
-      0.U -> l0_addr
-    )
-  )
-  io.ptw.req.valid  := (state === s_ptw_req)
-  io.ptw.resp.ready := (state === s_ptw_resp)
-
-  if (debugTLB) {
-    when(io.addr_trans.req.fire) {
-      printf(cf"${DebugTimer()} [TLB] vaddr=${io.addr_trans.req.bits.vaddr} satp_ppn=${io.satp_ppn}\n")
-    }
-    when(io.ptw.resp.fire) {
-      printf(
-        "%d [PTW] level=%d pte=%x ppn=%x\n",
-        DebugTimer(),
-        pt_level,
-        io.ptw.resp.bits.rdata,
-        io.ptw.resp.bits.rdata(53, 10)
-      )
-    }
-    when(io.addr_trans.resp.fire) {
-      printf(
-        cf"${DebugTimer()} [TLB] paddr=${io.addr_trans.resp.bits.paddr}" +
-          cf"page_fault=${io.addr_trans.resp.bits.page_fault}\n"
-      )
-    }
+  // TLB read
+  io.rpte   := 0.U.asTypeOf(new Sv39PTE)
+  io.rlevel := 0.U
+  io.hit    := hit4kb || hit2mb || hit1gb
+  when(hit4kb) {
+    io.rpte.flag := array4kb_rdata.flag
+    io.rpte.ppn0 := array4kb_rdata.ppn0
+    io.rpte.ppn1 := array4kb_rdata.ppn1
+    io.rpte.ppn2 := array4kb_rdata.ppn2
+  }.elsewhen(hit2mb) {
+    io.rpte.flag := array2mb_rdata.flag
+    io.rpte.ppn0 := 0.U
+    io.rpte.ppn1 := array2mb_rdata.ppn1
+    io.rpte.ppn2 := array2mb_rdata.ppn2
+    io.rlevel    := 1.U
+  }.elsewhen(hit1gb) {
+    io.rpte.flag := array1gb_rdata.flag
+    io.rpte.ppn0 := 0.U
+    io.rpte.ppn1 := 0.U
+    io.rpte.ppn2 := array1gb_rdata.ppn2
+    io.rlevel    := 2.U
   }
 }

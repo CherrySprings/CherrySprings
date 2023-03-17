@@ -6,21 +6,22 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
 
 class SoC(implicit p: Parameters) extends LazyModule {
-  val icache      = LazyModule(new ICache(0, 32))
-  val bridge_dmem = LazyModule(new CachePortToTileLinkBridge(1))
-  val bridge_iptw = LazyModule(new CachePortToTileLinkBridge(2))
-  val bridge_dptw = LazyModule(new CachePortToTileLinkBridge(3))
-  val xbar        = LazyModule(new TLXbar)
+  val icache      = LazyModule(new ICache)
+  val bridge_dmem = LazyModule(new CachePortToTileLinkBridge("dmem"))
+  val bridge_iptw = LazyModule(new CachePortToTileLinkBridge("iptw"))
+  val bridge_dptw = LazyModule(new CachePortToTileLinkBridge("dptw"))
+  val xbar        = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
   val node        = TLIdentityNode()
 
   // interrupt sinks
   val clint_int_sink = IntSinkNode(IntSinkPortSimple(1, 2))
   val plic_int_sink  = IntSinkNode(IntSinkPortSimple(2, 1))
 
-  xbar.node := icache.node
-  xbar.node := bridge_dmem.node
-  xbar.node := bridge_iptw.node
-  xbar.node := bridge_dptw.node
+  // don't modify order of following nodes
+  xbar.node := icache.node // 0
+  xbar.node := bridge_iptw.node // 1
+  xbar.node := bridge_dmem.node // 2
+  xbar.node := bridge_dptw.node // 3
   node      := xbar.node
 
   lazy val module = new LazyModuleImp(this) {

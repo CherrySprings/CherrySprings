@@ -23,9 +23,14 @@ class Decode(implicit p: Parameters) extends CherrySpringsModule {
 
   uop.from_decoder(decode_result)
 
-  when(io.in.valid && io.in.page_fault) {
-    uop.exc   := s"b$EXC_IPF".U
-    uop.valid := false.B
+  when(io.in.valid) {
+    when(io.in.page_fault) {
+      uop.exc   := s"b$EXC_IPF".U
+      uop.valid := false.B
+    }.elsewhen(io.in.access_fault) {
+      uop.exc   := s"b$EXC_IAF".U
+      uop.valid := false.B
+    }
   }
 
   io.out := Mux(io.in.valid, uop, 0.U.asTypeOf(new MicroOp))

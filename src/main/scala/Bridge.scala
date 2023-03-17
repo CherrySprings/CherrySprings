@@ -4,7 +4,7 @@ import chipsalliance.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 
-class CachePortToTileLinkBridge(source: Int)(implicit p: Parameters)
+class CachePortToTileLinkBridge(name: String)(implicit p: Parameters)
     extends LazyModule
     with HasCherrySpringsParameters {
   require(xLen == 64)
@@ -14,8 +14,8 @@ class CachePortToTileLinkBridge(source: Int)(implicit p: Parameters)
       TLMasterPortParameters.v1(
         clients = Seq(
           TLMasterParameters.v1(
-            name     = s"CachePort$source",
-            sourceId = IdRange(source, source + 1)
+            name     = s"CachePort$name",
+            sourceId = IdRange(0, sourceRange)
           )
         )
       )
@@ -41,11 +41,13 @@ class CachePortToTileLinkBridge(source: Int)(implicit p: Parameters)
     val req_wdata = req.bits.wdata
     val req_wmask = req.bits.wmask
 
-    val (_, get_bits) = edge.Get(source.U, req_addr, 3.U)
-    val (_, put_bits) = edge.Put(source.U, req_addr, 3.U, req_wdata, req_wmask)
+    val source = Counter(tl.a.fire, sourceRange)._1
 
-    tl.a.bits            := Mux(req.bits.wen, put_bits, get_bits)
-    resp.bits.rdata      := tl.d.bits.data
-    resp.bits.page_fault := false.B
+    val (_, get_bits) = edge.Get(source, req_addr, 3.U)
+    val (_, put_bits) = edge.Put(source, req_addr, 3.U, req_wdata, req_wmask)
+
+    tl.a.bits       := Mux(req.bits.wen, put_bits, get_bits)
+    resp.bits       := 0.U.asTypeOf(new CachePortResp)
+    resp.bits.rdata := tl.d.bits.data
   }
 }

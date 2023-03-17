@@ -1,10 +1,12 @@
 import chisel3._
 import chisel3.util._
-import chipsalliance.rocketchip.config.Parameters
+import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
+import chisel3.util.random._
+import dataclass.data
 
-class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
+class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   require(xLen == 64)
 
   val node = TLClientNode(
@@ -12,8 +14,8 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
       TLMasterPortParameters.v1(
         clients = Seq(
           TLMasterParameters.v1(
-            name            = s"InstructionCache$source",
-            sourceId        = IdRange(source, source + 1),
+            name            = s"InstructionCache",
+            sourceId        = IdRange(0, sourceRange),
             supportsProbe   = TransferSizes(xLen),
             supportsGet     = TransferSizes(xLen),
             supportsPutFull = TransferSizes(xLen)
@@ -30,40 +32,60 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
     })
     val (tl, edge) = node.out.head
 
+    /*
+     * Instruction cache (PIPT) organization
+     * #Sets         = cacheNumSets
+     * Associativity = 1
+     * Cacheline     = 4 x 64 bits
+     */
+
+    val tagWidth = paddrLen - (5 + log2Up(cacheNumSets))
     def getOffset(x: UInt) = x(4, 3)
-    def getIndex(x:  UInt) = x(4 + log2Up(size), 5)
-    def getTag(x:    UInt) = x(paddrLen - 1, 5 + log2Up(size))
+    def getIndex(x:  UInt) = x(4 + log2Up(cacheNumSets), 5)
+    def getTag(x:    UInt) = x(paddrLen - 1, 5 + log2Up(cacheNumSets))
 
-    val req  = io.cache.req
-    val resp = io.cache.resp
+    val req   = io.cache.req
+    val resp  = io.cache.resp
+    val req_r = RegInit(0.U.asTypeOf(new CachePortReq))
 
-    // Directed-mapped, #size sets, 4x64-bit cacheline, read-only
-    val array        = Module(new SRAM(depth = size, dw = 256))
-    val valid        = RegInit(VecInit(Seq.fill(size)(false.B)))
-    val tag          = RegInit(VecInit(Seq.fill(size)(0.U((32 - 5 - log2Up(size)).W))))
-    val hit          = valid(getIndex(req.bits.addr)) && (getTag(req.bits.addr) === tag(getIndex(req.bits.addr)))
-    val hit_r        = RegEnable(hit, false.B, req.fire)
-    val addr_r       = RegEnable(req.bits.addr, 0.U, req.fire)
-    val refill_count = RegInit(0.U(2.W)) // saturation counter (0 -> 1 -> 2 -> 3 -> 0)
+    val array = Module(new SRAM(depth = cacheNumSets, dw = (new ICacheEntry).len))
+    val valid = RegInit(VecInit(Seq.fill(cacheNumSets)(false.B)))
 
-    when(io.fence_i) {
-      for (i <- 0 until size) {
-        valid(i) := false.B
-      }
+    // default input
+    array.io.addr  := 0.U
+    array.io.wdata := 0.U
+    array.io.wen   := false.B
+
+    // pipeline control signals
+    val s1_valid = Wire(Bool())
+    val s2_ready = Wire(Bool())
+    val fire     = s1_valid & s2_ready
+
+    // array output in stage 2
+    val array_out = Wire(new ICacheEntry)
+    val array_hit = Wire(Bool())
+    array_out := HoldUnless(array.io.rdata, RegNext(fire)).asTypeOf(new ICacheEntry)
+    array_hit := valid(getIndex(req_r.addr)) && (getTag(req_r.addr) === array_out.tag)
+
+    // when pipeline fire, read data and tag in array
+    when(fire) {
+      array.io.addr := getIndex(req.bits.addr)
+      req_r         := req.bits
     }
 
-    val s_check :: s_req :: s_resp :: s_ok :: Nil = Enum(4)
-    val state                                     = RegInit(s_check)
+    // stage 2 FSM
+    val s_check :: s_req :: s_resp :: s_ok :: s_init :: Nil = Enum(5)
+    val state                                               = RegInit(s_init)
 
+    // refill cacheline
+    val refill_count = RegInit(0.U(2.W)) // saturation counter (0 -> 1 -> 2 -> 3 -> 0)
     when(tl.d.fire) {
       refill_count := refill_count + 1.U
     }
 
     switch(state) {
       is(s_check) {
-        when(req.fire) {
-          state := Mux(hit, s_ok, s_req)
-        }
+        state := Mux(resp.fire && !req.fire, s_init, Mux(array_hit, s_check, s_req))
       }
       is(s_req) {
         when(tl.a.fire) {
@@ -76,49 +98,86 @@ class ICache(source: Int, size: Int)(implicit p: Parameters) extends LazyModule 
         }
       }
       is(s_ok) {
-        when(resp.fire) {
+        state := Mux(resp.fire && !req.fire, s_init, s_check)
+      }
+      is(s_init) {
+        when(req.fire) {
           state := s_check
         }
       }
     }
 
-    val (_, get_bits) = edge.Get(source.U, Cat(addr_r(paddrLen - 1, 5), Fill(5, 0.U)), 5.U)
-
     // cache read
-    val rdata = HoldUnless(
+    val array_data = HoldUnless(
       MuxLookup(
-        getOffset(addr_r),
+        getOffset(req_r.addr),
         0.U(64.W),
         Array(
-          0.U -> array.io.rdata(63, 0),
-          1.U -> array.io.rdata(127, 64),
-          2.U -> array.io.rdata(191, 128),
-          3.U -> array.io.rdata(255, 192)
+          0.U -> array_out.data(63, 0),
+          1.U -> array_out.data(127, 64),
+          2.U -> array_out.data(191, 128),
+          3.U -> array_out.data(255, 192)
         )
       ),
-      RegNext(req.fire) || RegNext(tl.d.fire)
+      RegNext(req.fire)
     )
 
     // cache write
     val wdata0 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 0.U))
     val wdata1 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 1.U))
     val wdata2 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 2.U))
+    val wdata3 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 3.U))
 
-    array.io.addr  := Mux(state === s_check, getIndex(io.cache.req.bits.addr), getIndex(addr_r))
-    array.io.wen   := tl.d.fire && (refill_count === 3.U)
-    array.io.wdata := Cat(tl.d.bits.data, wdata2, wdata1, wdata0)
-
-    when(resp.fire) {
-      valid(getIndex(addr_r)) := true.B
-      tag(getIndex(addr_r))   := getTag(addr_r)
+    when(tl.d.fire && (refill_count === 3.U)) {
+      array.io.addr               := getIndex(req_r.addr)
+      array.io.wdata              := Cat(getTag(req_r.addr), tl.d.bits.data, wdata2, wdata1, wdata0)
+      array.io.wen                := true.B
+      valid(getIndex(req_r.addr)) := true.B
     }
 
-    req.ready            := state === s_check
-    tl.a.valid           := state === s_req
-    tl.a.bits            := get_bits
-    tl.d.ready           := state === s_resp
-    resp.valid           := state === s_ok
-    resp.bits.rdata      := rdata
-    resp.bits.page_fault := false.B
+    val refill_data = MuxLookup(
+      getOffset(req_r.addr),
+      0.U(64.W),
+      Array(
+        0.U -> wdata0,
+        1.U -> wdata1,
+        2.U -> wdata2,
+        3.U -> wdata3
+      )
+    )
+
+    // pipeline control
+    s2_ready := ((state === s_check && array_hit) || (state === s_ok) || (state === s_init)) && resp.ready
+    s1_valid := req.valid
+
+    // send TL burst read request
+    val source        = Counter(tl.a.fire, sourceRange)._1 // source id
+    val (_, get_bits) = edge.Get(source, Cat(req_r.addr(paddrLen - 1, 5), Fill(5, 0.U)), 5.U) // 4x64 bits
+
+    tl.a.valid := (state === s_req)
+    tl.a.bits  := get_bits
+    tl.d.ready := (state === s_resp)
+
+    // cache port handshake
+    req.ready       := s2_ready
+    resp.valid      := (state === s_check && array_hit) || (state === s_ok)
+    resp.bits       := 0.U.asTypeOf(new CachePortResp)
+    resp.bits.rdata := Mux(state === s_ok, refill_data, array_data)
+
+    // clear I cache for fence.i instruction
+    when(io.fence_i) {
+      for (i <- 0 until cacheNumSets) {
+        valid(i) := false.B
+      }
+    }
+
+    if (debugICache) {
+      when(req.fire) {
+        printf(cf"${DebugTimer()} [ICache] [req ] ${req.bits}\n")
+      }
+      when(resp.fire) {
+        printf(cf"${DebugTimer()} [ICache] [resp] ${resp.bits}\n")
+      }
+    }
   }
 }
