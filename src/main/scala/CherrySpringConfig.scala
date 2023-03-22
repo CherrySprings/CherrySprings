@@ -27,6 +27,7 @@ trait HasCherrySpringsParameters {
   def vaddrLen:         Int     = 39
   def sourceRange:      Int     = 4
   def cacheNumSets:     Int     = p(CacheNumSets)
+  def enablePCTrace:    Boolean = false
   def debugInstrFetch:  Boolean = false
   def debugInstrCommit: Boolean = false
   def debugICache:      Boolean = false

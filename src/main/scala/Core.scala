@@ -281,15 +281,12 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     diff_ic.io.isStore := (commit_uop.lsu_op === s"b$LSU_ST".U)
     if (debugInstrCommit) {
       when(commit_uop.valid) {
-        printf(
-          "%d [COMMIT] pc=%x instr=%x wen=%x wdest=%d prv=%d\n",
-          DebugTimer(),
-          commit_uop.pc,
-          commit_uop.instr,
-          commit_uop.rd_wen,
-          commit_uop.rd_index,
-          prv
-        )
+        printf(cf"${DebugTimer()} [COMMIT] pc=${commit_uop.pc}%x instr=${commit_uop.instr}%x prv=$prv\n")
+      }
+    }
+    if (enablePCTrace) {
+      when(commit_uop.valid) {
+        printf(cf"${commit_uop.pc}%x\n")
       }
     }
 
