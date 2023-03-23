@@ -7,7 +7,7 @@ import freechips.rocketchip.interrupts._
 
 class SoC(implicit p: Parameters) extends LazyModule {
   val icache      = LazyModule(new ICache)
-  val bridge_dmem = LazyModule(new CachePortToTileLinkBridge("dmem"))
+  val dcache      = LazyModule(new DCache)
   val bridge_iptw = LazyModule(new CachePortToTileLinkBridge("iptw"))
   val bridge_dptw = LazyModule(new CachePortToTileLinkBridge("dptw"))
   val xbar        = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
@@ -20,7 +20,7 @@ class SoC(implicit p: Parameters) extends LazyModule {
   // don't modify order of following nodes
   xbar.node := icache.node // 0
   xbar.node := bridge_iptw.node // 1
-  xbar.node := bridge_dmem.node // 2
+  xbar.node := dcache.node // 2
   xbar.node := bridge_dptw.node // 3
   node      := xbar.node
 
@@ -32,9 +32,11 @@ class SoC(implicit p: Parameters) extends LazyModule {
     core.io.interrupt.mtip      := clint_int_sink.in.head._1(1)
     core.io.interrupt.meip      := plic_int_sink.in.head._1(0)
     core.io.interrupt.seip      := plic_int_sink.in.last._1(0)
-    icache.module.io.fence_i    := core.io.fence_i
     icache.module.io.cache      <> core.io.imem
-    bridge_dmem.module.io.cache <> core.io.dmem
+    icache.module.io.fence_i    := core.io.fence_i
+    dcache.module.io.cache      <> core.io.dmem
+    dcache.module.io.fence_i    := core.io.fence_i
+    core.io.fence_i_ok          := dcache.module.io.fence_i_ok
     bridge_iptw.module.io.cache <> core.io.iptw
     bridge_dptw.module.io.cache <> core.io.dptw
   }

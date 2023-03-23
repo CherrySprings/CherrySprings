@@ -163,7 +163,7 @@ class TLB1GBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
   def vpn1gb() = vpn2
 }
 
-class ICacheEntry(implicit p: Parameters) extends CherrySpringsBundle {
+class CacheEntry(implicit p: Parameters) extends CherrySpringsBundle {
   val tag  = UInt((paddrLen - (5 + log2Up(cacheNumSets))).W)
   val data = UInt(256.W)
 
