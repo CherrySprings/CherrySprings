@@ -6,12 +6,10 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
 
 class SoC(implicit p: Parameters) extends LazyModule {
-  val icache      = LazyModule(new ICache)
-  val dcache      = LazyModule(new DCache)
-  val bridge_iptw = LazyModule(new CachePortToTileLinkBridge("iptw"))
-  val bridge_dptw = LazyModule(new CachePortToTileLinkBridge("dptw"))
-  val xbar        = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
-  val node        = TLIdentityNode()
+  val icache = LazyModule(new ICache)
+  val dcache = LazyModule(new DCache)
+  val xbar   = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
+  val node   = TLIdentityNode()
 
   // interrupt sinks
   val clint_int_sink = IntSinkNode(IntSinkPortSimple(1, 2))
@@ -19,25 +17,27 @@ class SoC(implicit p: Parameters) extends LazyModule {
 
   // don't modify order of following nodes
   xbar.node := icache.node // 0
-  xbar.node := bridge_iptw.node // 1
-  xbar.node := dcache.node // 2
-  xbar.node := bridge_dptw.node // 3
+  xbar.node := dcache.node // 1
   node      := xbar.node
 
   lazy val module = new LazyModuleImp(this) {
 
     val core = Module(new Core)
 
-    core.io.interrupt.msip      := clint_int_sink.in.head._1(0)
-    core.io.interrupt.mtip      := clint_int_sink.in.head._1(1)
-    core.io.interrupt.meip      := plic_int_sink.in.head._1(0)
-    core.io.interrupt.seip      := plic_int_sink.in.last._1(0)
-    icache.module.io.cache      <> core.io.imem
-    icache.module.io.fence_i    := core.io.fence_i
-    dcache.module.io.cache      <> core.io.dmem
-    dcache.module.io.fence_i    := core.io.fence_i
-    core.io.fence_i_ok          := dcache.module.io.fence_i_ok
-    bridge_iptw.module.io.cache <> core.io.iptw
-    bridge_dptw.module.io.cache <> core.io.dptw
+    core.io.interrupt.msip   := clint_int_sink.in.head._1(0)
+    core.io.interrupt.mtip   := clint_int_sink.in.head._1(1)
+    core.io.interrupt.meip   := plic_int_sink.in.head._1(0)
+    core.io.interrupt.seip   := plic_int_sink.in.last._1(0)
+    icache.module.io.cache   <> core.io.imem
+    icache.module.io.fence_i := core.io.fence_i
+    dcache.module.io.fence_i := core.io.fence_i
+    core.io.fence_i_ok       := dcache.module.io.fence_i_ok
+
+    // connect ptw port to data cache
+    val xbar = Module(new CachePortXBarNto1(3))
+    xbar.io.in(0)          <> core.io.dmem
+    xbar.io.in(1)          <> core.io.iptw
+    xbar.io.in(2)          <> core.io.dptw
+    dcache.module.io.cache <> xbar.io.out
   }
 }

@@ -85,8 +85,8 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     // write to cache when hit & wen
     when(state === s_check) {
       array_wdata.data := MaskData(array_out.data, req_wdata_256, req_wmask_256)
-      array.io.wen     := req_r.wen
-      when(req_r.wen) {
+      array.io.wen     := req_r.wen && array_hit
+      when(array.io.wen) {
         dirty(getIndex(req_r.addr)) := true.B
       }
     }
@@ -261,5 +261,22 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     resp.bits       := 0.U.asTypeOf(new CachePortResp)
     resp.bits.rdata := Mux(req_r.wen, 0.U, Mux(state === s_ok, refill_data, array_hit_data))
 
+    if (debugDCache) {
+      when(req.fire) {
+        printf(cf"${DebugTimer()} [DCache] [in -req ] ${req.bits}\n")
+      }
+      when(resp.fire) {
+        printf(cf"${DebugTimer()} [DCache] [in -resp] ${resp.bits}\n")
+      }
+      when(tl.a.fire) {
+        printf(
+          cf"${DebugTimer()} [DCache] [out-req ] addr=${tl.a.bits.address}%x " +
+            cf"wdata=${tl.a.bits.data}%x wmask=${tl.a.bits.mask}%x wen=${!(state === s_get_req)}\n"
+        )
+      }
+      when(tl.d.fire) {
+        printf(cf"${DebugTimer()} [DCache] [out-resp] rdata=${tl.d.bits.data}\n")
+      }
+    }
   }
 }

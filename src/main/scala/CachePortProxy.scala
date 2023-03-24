@@ -185,7 +185,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   io.in.resp.valid             := io.out.resp.valid || io.in.resp.bits.page_fault || io.in.resp.bits.access_fault
   io.out.resp.ready            := io.in.resp.ready
 
-  val debug_name = if (p(IsITLB)) "IPP" else "DPP"
+  val debug_name = if (p(IsITLB)) "IProxy" else "DProxy"
   if (debugPortProxy) {
     when(io.in.req.fire) {
       printf(cf"${DebugTimer()} [$debug_name] [in -req ] ${io.in.req.bits}\n")

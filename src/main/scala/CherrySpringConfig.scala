@@ -31,6 +31,7 @@ trait HasCherrySpringsParameters {
   def debugInstrFetch:  Boolean = false
   def debugInstrCommit: Boolean = false
   def debugICache:      Boolean = false
+  def debugDCache:      Boolean = false
   def debugPortProxy:   Boolean = false
   def debugTLB:         Boolean = false
 }
