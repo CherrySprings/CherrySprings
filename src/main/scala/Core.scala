@@ -118,12 +118,14 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     case IsITLB => false
     case IsDTLB => true
   })))
-  lsu.io.uop      := id_ex.io.out.uop
-  lsu.io.is_mem   := is_mem
-  lsu.io.is_store := is_store
-  lsu.io.is_amo   := is_amo
-  lsu.io.addr     := alu_br_out
-  lsu.io.wdata    := id_ex.io.out.rs2_data_from_rf
+  val c2d_bridge = Module(new DataPort2CachePortBridge)
+  lsu.io.uop       := id_ex.io.out.uop
+  lsu.io.is_mem    := is_mem
+  lsu.io.is_store  := is_store
+  lsu.io.is_amo    := is_amo
+  lsu.io.addr      := alu_br_out
+  lsu.io.wdata     := id_ex.io.out.rs2_data_from_rf
+  c2d_bridge.io.in <> lsu.io.dmem
 
   val mdu = Module(new MDU)
   mdu.io.uop    := id_ex.io.out.uop
@@ -146,7 +148,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   csr.io.lsu_exc_code := lsu.io.exc_code
   csr.io.mtip         := io.interrupt.mtip
 
-  dmem_proxy.io.in         <> lsu.io.dmem
+  dmem_proxy.io.in         <> c2d_bridge.io.out
   dmem_proxy.io.out        <> io.dmem
   dmem_proxy.io.ptw        <> io.dptw
   dmem_proxy.io.prv        := Mux(csr.io.mprv, csr.io.mpp, prv)

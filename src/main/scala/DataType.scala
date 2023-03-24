@@ -50,32 +50,6 @@ class ExternalInterruptIO(implicit p: Parameters) extends CherrySpringsBundle {
   val seip = Input(Bool())
 }
 
-class CachePortReq(implicit p: Parameters) extends CherrySpringsBundle {
-  val addr  = Output(UInt(vaddrLen.W))
-  val wdata = Output(UInt(xLen.W))
-  val wmask = Output(UInt((xLen / 8).W))
-  val wen   = Output(Bool())
-
-  override def toPrintable: Printable = {
-    cf"addr=$addr%x wdata=$wdata%x wmask=$wmask%x wen=$wen"
-  }
-}
-
-class CachePortResp(implicit p: Parameters) extends CherrySpringsBundle {
-  val rdata        = Output(UInt(xLen.W))
-  val page_fault   = Output(Bool())
-  val access_fault = Output(Bool())
-
-  override def toPrintable: Printable = {
-    cf"rdata=$rdata%x pf=$page_fault af=$access_fault"
-  }
-}
-
-class CachePortIO(implicit p: Parameters) extends CherrySpringsBundle {
-  val req  = Decoupled(new CachePortReq)
-  val resp = Flipped(Decoupled(new CachePortResp))
-}
-
 class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {
   val vpn2   = UInt(vpn2Len.W)
   val vpn1   = UInt(vpn1Len.W)
