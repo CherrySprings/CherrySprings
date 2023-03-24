@@ -47,46 +47,50 @@ class TLVirtualRam(implicit p: Parameters) extends LazyModule with HasCherrySpri
     val s_req :: s_resp :: Nil = Enum(2)
     val state                  = RegInit(s_req)
 
-    val count     = RegInit(0.U(3.W))
-    val count_max = RegInit(0.U(3.W))
+    val req    = HoldUnless(tl.a.bits, tl.a.fire)
+    val is_get = (req.opcode === TLMessages.Get)
+    val is_put = (req.opcode === TLMessages.PutFullData) || (req.opcode === TLMessages.PutPartialData)
+
+    val put_count = RegInit(0.U(2.W))
+    val get_count = RegInit(0.U(2.W))
+    val count_max = MuxLookup(req.size, 0.U, Array(3.U -> 0.U, 4.U -> 1.U, 5.U -> 3.U))
 
     switch(state) {
       is(s_req) {
         when(tl.a.fire) {
-          state := s_resp
-          count := 0.U
-          count_max := MuxLookup(
-            tl.a.bits.size,
-            0.U,
-            Array(
-              3.U -> 0.U,
-              4.U -> 1.U,
-              5.U -> 3.U
-            )
-          )
+          when(is_get) {
+            state     := s_resp
+            get_count := 0.U
+          }.otherwise {
+            put_count := put_count + 1.U
+            when(put_count === count_max) {
+              state := s_resp
+            }
+          }
         }
       }
       is(s_resp) {
         when(tl.d.fire) {
-          count := count + 1.U
-          state := Mux(count =/= count_max, s_resp, s_req)
+          when(is_get) {
+            get_count := get_count + 1.U
+            when(get_count === count_max) {
+              state := s_req
+            }
+          }.otherwise {
+            state     := s_req
+            put_count := 0.U
+          }
         }
       }
     }
 
-    val req    = RegInit(0.U.asTypeOf(tl.a.bits))
-    val is_get = (req.opcode === TLMessages.Get)
-    val is_put = (req.opcode === TLMessages.PutFullData) || (req.opcode === TLMessages.PutPartialData)
-    when(tl.a.fire) {
-      req := tl.a.bits
-    }
     val vr = Module(new VirtualRam)
     vr.io.clk   := clock
-    vr.io.en    := (is_get || is_put) && tl.d.fire
-    vr.io.addr  := req.address(30, 3) + count
+    vr.io.en    := (is_get && tl.d.fire) || (is_put && tl.a.fire)
+    vr.io.addr  := req.address(30, 3) + Mux(is_get, get_count, put_count)
     vr.io.wdata := req.data
     vr.io.wmask := req.mask
-    vr.io.wen   := is_put && tl.d.fire
+    vr.io.wen   := is_put && tl.a.fire
 
     tl.a.ready := (state === s_req)
     tl.d.valid := (state === s_resp)

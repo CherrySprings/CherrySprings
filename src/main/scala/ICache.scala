@@ -48,7 +48,7 @@ class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     val resp  = io.cache.resp
     val req_r = RegInit(0.U.asTypeOf(new CachePortReq))
 
-    val array = Module(new SRAM(depth = cacheNumSets, dw = (new ICacheEntry).len))
+    val array = Module(new SRAM(depth = cacheNumSets, dw = (new CacheEntry).len))
     val valid = RegInit(VecInit(Seq.fill(cacheNumSets)(false.B)))
 
     // default input
@@ -62,9 +62,9 @@ class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     val fire     = s1_valid & s2_ready
 
     // array output in stage 2
-    val array_out = Wire(new ICacheEntry)
+    val array_out = Wire(new CacheEntry)
     val array_hit = Wire(Bool())
-    array_out := HoldUnless(array.io.rdata, RegNext(fire)).asTypeOf(new ICacheEntry)
+    array_out := HoldUnless(array.io.rdata, RegNext(fire)).asTypeOf(new CacheEntry)
     array_hit := valid(getIndex(req_r.addr)) && (getTag(req_r.addr) === array_out.tag)
 
     // when pipeline fire, read data and tag in array

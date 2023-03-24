@@ -29,7 +29,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     val mpp          = Output(UInt(2.W))
     val sv39_en      = Output(Bool())
     val satp_ppn     = Output(UInt(44.W))
-    val fence_i      = Output(Bool())
+    val fence_i_ok   = Input(Bool())
     val sfence_vma   = Output(Bool())
     val jmp_packet   = Output(new JmpPacket)
     val lsu_addr     = Input(UInt(xLen.W))
@@ -672,12 +672,10 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   /*
    * System instructions
    */
-  val is_sfv     = io.uop.sys_op === s"b$SYS_SFV".U
-  val sfv_legal  = prv_is_ms && !(prv_is_s && mstatus_tvm.asBool)
-  val is_fence_i = io.uop.sys_op === s"b$SYS_FENCEI".U
-  val is_sys     = io.sfence_vma && io.fence_i
+  val is_sfv    = io.uop.sys_op === s"b$SYS_SFV".U
+  val sfv_legal = prv_is_ms && !(prv_is_s && mstatus_tvm.asBool)
+  val is_sys    = io.sfence_vma && io.fence_i_ok
   io.sfence_vma := is_sfv && sfv_legal
-  io.fence_i    := is_fence_i
 
   /*
    * Exception & Interrupt

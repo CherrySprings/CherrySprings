@@ -37,9 +37,11 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
 
   // check in port request address range (only check paddr)
   val in_addr       = io.in.req.bits.addr
-  val in_addr_clint = (in_addr >= "h02000000".U) && (in_addr < "h0200FFFF".U)
-  val in_addr_plic  = (in_addr >= "h0C000000".U) && (in_addr < "h0FFFFFFF".U)
-  val access_fault  = (in_addr(31) === 0.U) && !(in_addr_clint || in_addr_plic) && (io.prv === PRV.M.U || !atp_en)
+  val in_addr_clint = (in_addr >= "h02000000".U) && (in_addr <= "h0200FFFF".U)
+  val in_addr_plic  = (in_addr >= "h0C000000".U) && (in_addr <= "h0FFFFFFF".U)
+  val in_addr_uart  = (in_addr >= "h10000000".U) && (in_addr <= "h1000FFFF".U)
+  val access_fault = (in_addr(31) === 0.U) && (io.prv === PRV.M.U || !atp_en) &&
+    !(in_addr_clint || in_addr_plic || in_addr_uart)
 
   // page table walk
   val ptw_level    = RegInit(0.U(2.W))
@@ -183,7 +185,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   io.in.resp.valid             := io.out.resp.valid || io.in.resp.bits.page_fault || io.in.resp.bits.access_fault
   io.out.resp.ready            := io.in.resp.ready
 
-  val debug_name = if (p(IsITLB)) "IPP" else "DPP"
+  val debug_name = if (p(IsITLB)) "IProxy" else "DProxy"
   if (debugPortProxy) {
     when(io.in.req.fire) {
       printf(cf"${DebugTimer()} [$debug_name] [in -req ] ${io.in.req.bits}\n")
