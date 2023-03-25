@@ -12,18 +12,19 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope {
   lazy val dts = DTS(bindingTree)
 
   val soc   = LazyModule(new SoC)
-  val xbar  = LazyModule(new TLXbar)
+  val xbar  = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
   val clint = LazyModule(new CLINT(CLINTParams(), 8))
   val plic  = LazyModule(new TLPLIC(PLICParams(), 8))
   val uart  = LazyModule(new UART)
   val mem   = LazyModule(new TLVirtualRam)
 
-  xbar.node := soc.node
+  xbar.node := TLBuffer(abcde = BufferParams(depth = 2, flow = false, pipe = false)) := soc.node
 
+  // don't modify order of following nodes
+  mem.node   := TLDelayer(0.1)   := xbar.node
   clint.node := xbar.node
   plic.node  := xbar.node
   uart.node  := TLWidthWidget(8) := xbar.node
-  mem.node   := TLDelayer(0.1)   := xbar.node
 
   soc.clint_int_sink := clint.intnode
   soc.plic_int_sink :*= plic.intnode
