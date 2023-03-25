@@ -24,6 +24,7 @@ class DXPacket(implicit p: Parameters) extends CherrySpringsBundle {
 class XWPacket(implicit p: Parameters) extends CherrySpringsBundle {
   val uop     = new MicroOp
   val rd_data = UInt(xLen.W)
+  val is_mmio = Bool()
 }
 
 class PipelineReg[T <: Bundle](packet: T)(implicit p: Parameters) extends CherrySpringsModule {

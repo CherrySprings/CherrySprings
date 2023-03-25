@@ -1,9 +1,10 @@
 import chisel3._
 import chisel3.util._
-import chisel3.util.experimental.BoringUtils
+import chisel3.util.experimental._
 import chipsalliance.rocketchip.config._
 import Constant._
 import difftest._
+import freechips.rocketchip.rocket._
 
 class Core(implicit p: Parameters) extends CherrySpringsModule {
   val io = IO(new Bundle {
@@ -11,13 +12,14 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     val dmem       = new CachePortIO
     val iptw       = new CachePortIO
     val dptw       = new CachePortIO
+    val uncache    = new CachePortIO
     val fence_i    = Output(Bool())
     val fence_i_ok = Input(Bool())
     val interrupt  = new ExternalInterruptIO
   })
 
   def isAmo(lsu_op:   UInt) = lsu_op(4).asBool
-  def isStore(lsu_op: UInt) = lsu_op === s"b$LSU_ST".U || lsu_op === s"b$LSU_SC".U
+  def isStore(lsu_op: UInt) = (lsu_op === s"b$LSU_ST".U) || (lsu_op === s"b$LSU_SC".U)
 
   val prv        = Wire(UInt(2.W))
   val sv39_en    = Wire(Bool())
@@ -110,22 +112,17 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   val is_csr     = (id_ex.io.out.uop.fu === s"b$FU_CSR".U) && id_ex.io.out.uop.valid
   val is_store   = isStore(id_ex.io.out.uop.lsu_op)
   val is_amo     = isAmo(id_ex.io.out.uop.lsu_op)
+  val is_mmio    = is_mem && !(alu_br_out(paddrLen - 1).asBool) && (prv === PRV.M.U)
   val is_fence_i = (id_ex.io.out.uop.sys_op === s"b$SYS_FENCEI".U) && id_ex.io.out.uop.valid
   io.fence_i := is_fence_i
 
   val lsu = Module(new LSU)
-  val dmem_proxy = Module(new CachePortProxy()(p.alterPartial({
-    case IsITLB => false
-    case IsDTLB => true
-  })))
-  val c2d_bridge = Module(new DataPort2CachePortBridge)
-  lsu.io.uop       := id_ex.io.out.uop
-  lsu.io.is_mem    := is_mem
-  lsu.io.is_store  := is_store
-  lsu.io.is_amo    := is_amo
-  lsu.io.addr      := alu_br_out
-  lsu.io.wdata     := id_ex.io.out.rs2_data_from_rf
-  c2d_bridge.io.in <> lsu.io.dmem
+  lsu.io.uop      := id_ex.io.out.uop
+  lsu.io.is_mem   := is_mem
+  lsu.io.is_store := is_store
+  lsu.io.is_amo   := is_amo
+  lsu.io.addr     := alu_br_out
+  lsu.io.wdata    := id_ex.io.out.rs2_data_from_rf
 
   val mdu = Module(new MDU)
   mdu.io.uop    := id_ex.io.out.uop
@@ -148,13 +145,34 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   csr.io.lsu_exc_code := lsu.io.exc_code
   csr.io.mtip         := io.interrupt.mtip
 
-  dmem_proxy.io.in         <> c2d_bridge.io.out
-  dmem_proxy.io.out        <> io.dmem
-  dmem_proxy.io.ptw        <> io.dptw
+  val dmem_proxy = Module(new CachePortProxy()(p.alterPartial({
+    case IsITLB => false
+    case IsDTLB => true
+  })))
   dmem_proxy.io.prv        := Mux(csr.io.mprv, csr.io.mpp, prv)
   dmem_proxy.io.sv39_en    := sv39_en
   dmem_proxy.io.satp_ppn   := satp_ppn
   dmem_proxy.io.sfence_vma := sfence_vma
+
+  /*
+   * Data bus layout
+   *
+   *               +---------+      +------------+
+   *  +-----+      |         |      |            | <--> dmem
+   *  |     |      |         | <--> | dmem_proxy |
+   *  | lsu | <--> | c2_xbar |      |            | <--> dptw
+   *  |     |      |         |      +------------+
+   *  +-----+      |         | <----------------------> uncache
+   *               +---------+
+   */
+
+  val c2_xbar = Module(new CachePortXBar1to2)
+  c2_xbar.io.in    <> lsu.io.dmem
+  c2_xbar.io.to_1  := is_mmio
+  dmem_proxy.io.in <> c2_xbar.io.out(0) // to data cache
+  io.uncache       <> c2_xbar.io.out(1) // to uncache
+  io.dmem          <> dmem_proxy.io.out
+  io.dptw          <> dmem_proxy.io.ptw
 
   val ex_wb = Module(new PipelineReg(new XWPacket))
   ex_wb.io.in.uop := id_ex.io.out.uop
@@ -173,12 +191,16 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       s"b$FU_CSR".U -> csr.io.rw.rdata
     )
   )
-  ex_wb.io.en    := true.B
-  ex_wb.io.flush := false.B
+  ex_wb.io.in.is_mmio := is_mmio
+  ex_wb.io.en         := true.B
+  ex_wb.io.flush      := false.B
 
   /* ----- Stage 5 - Write Back (WB) --------------- */
 
   val commit_uop = ex_wb.io.out.uop
+  val commit_is_cycle = commit_uop.valid && (commit_uop.fu === s"b$FU_CSR".U) &&
+    (commit_uop.instr(31, 20) === CSRs.mcycle.U || commit_uop.instr(31, 20) === CSRs.cycle.U)
+  val commit_skip = (commit_uop.instr === PUTCH()) || ex_wb.io.out.is_mmio || commit_is_cycle
   rf.io.rd_wen   := commit_uop.valid && commit_uop.rd_wen
   rf.io.rd_index := commit_uop.rd_index
   rf.io.rd_data  := ex_wb.io.out.rd_data
@@ -250,21 +272,6 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   /* ----- Processor Difftest -------------------- */
 
   if (enableDifftest) {
-    val is_mmio = WireDefault(false.B)
-    when(
-      commit_uop.valid && RegNext(is_mem) && !RegNext(lsu.io.addr(paddrLen - 1).asBool) && RegNext(prv === PRV.M.U)
-    ) {
-      is_mmio := true.B
-    }
-
-    val is_cycle = WireDefault(false.B)
-    when(
-      commit_uop.valid && commit_uop.fu === s"b$FU_CSR".U &&
-        (commit_uop.instr(31, 20) === "hb00".U || commit_uop.instr(31, 20) === "hc00".U)
-    ) {
-      is_cycle := true.B
-    }
-
     val diff_ic = Module(new DifftestInstrCommit)
     diff_ic.io.clock   := clock
     diff_ic.io.coreid  := hartID.U
@@ -273,7 +280,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     diff_ic.io.instr   := commit_uop.instr
     diff_ic.io.valid   := commit_uop.valid
     diff_ic.io.special := false.B
-    diff_ic.io.skip    := (commit_uop.instr === PUTCH()) || is_mmio || is_cycle
+    diff_ic.io.skip    := commit_skip
     diff_ic.io.isRVC   := false.B
     diff_ic.io.rfwen   := commit_uop.rd_wen
     diff_ic.io.fpwen   := false.B

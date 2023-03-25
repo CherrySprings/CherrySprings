@@ -22,8 +22,8 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope {
 
   clint.node := xbar.node
   plic.node  := xbar.node
-  uart.node  := xbar.node
-  mem.node   := TLDelayer(0.1) := xbar.node
+  uart.node  := TLWidthWidget(8) := xbar.node
+  mem.node   := TLDelayer(0.1)   := xbar.node
 
   soc.clint_int_sink := clint.intnode
   soc.plic_int_sink :*= plic.intnode
