@@ -128,10 +128,6 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     }
   }
 
-  when(state === s_amo_ld_resp && resp.fire) {
-    rdata_amo := resp.bits.rdata
-  }
-
   // todo: optimize this logic
   wdata_amo := MuxLookup(
     io.uop.lsu_op,
@@ -169,6 +165,10 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
       s"b$MEM_DWORD".U -> resp_data
     )
   )
+
+  when(state === s_amo_ld_resp && resp.fire) {
+    rdata_amo := rdata
+  }
 
   io.rdata := Mux(is_sc, (!sc_succeed).asUInt, Mux(io.is_amo, rdata_amo, rdata))
   io.valid := (state === s_resp || state === s_amo_st_resp) && (resp.fire && !resp.bits.page_fault && !resp.bits.access_fault) ||
