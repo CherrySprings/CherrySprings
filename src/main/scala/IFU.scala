@@ -10,12 +10,15 @@ class IF0(implicit p: Parameters) extends CherrySpringsModule {
     val stall_b    = Input(Bool())
   })
 
-  val pc_next   = Wire(UInt(xLen.W))
-  val pc_update = (io.jmp_packet.valid || io.req.fire)
-  val pc        = RegEnable(pc_next, resetPC.U, pc_update)
-  pc_next := Mux(io.jmp_packet.valid, io.jmp_packet.target + Mux(io.req.fire, 4.U, 0.U), pc + 4.U)
+  val pc_next    = Wire(UInt(xLen.W))
+  val pc_update  = (io.jmp_packet.valid || io.req.fire)
+  val pc         = RegEnable(pc_next, resetPC.U, pc_update)
+  val jmp_target = Wire(UInt(xLen.W))
 
-  io.req_addr      := Mux(io.jmp_packet.valid, io.jmp_packet.target, pc)
+  jmp_target := Cat(io.jmp_packet.target(xLen - 1, 2), 0.U(2.W))
+  pc_next    := Mux(io.jmp_packet.valid, jmp_target + Mux(io.req.fire, 4.U, 0.U), pc + 4.U)
+
+  io.req_addr      := Mux(io.jmp_packet.valid, jmp_target, pc)
   io.req.bits      := 0.U.asTypeOf(new CachePortReq)
   io.req.bits.addr := Cat(io.req_addr(vaddrLen - 1, 3), 0.U(3.W))
   io.req.valid     := io.stall_b
