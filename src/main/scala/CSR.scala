@@ -280,15 +280,17 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val satp         = RegInit(0.U(xLen.W))
   val satp_updated = WireDefault(false.B)
   val tvm_en       = prv_is_s && mstatus_tvm.asBool
+  // if satp is written with an unsupported MODE, the entire write has no effect
+  val satp_wen = (wdata(62, 60) === 0.U)
   when(io.rw.addr === CSRs.satp.U) {
     rdata := satp
-    when(wen) {
+    when(wen && satp_wen) {
       satp         := wdata
       satp_updated := prv_is_s // flush pipeline after satp updated if in S mode
     }
     csr_legal := prv_is_ms && !tvm_en
   }
-  io.sv39_en  := (satp(63, 60) === 8.U)
+  io.sv39_en  := satp(63).asBool
   io.satp_ppn := satp(43, 0)
 
   /*
