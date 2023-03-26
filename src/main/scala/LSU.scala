@@ -129,19 +129,20 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   }
 
   // todo: optimize this logic
+  val wdata_raw = Mux(io.uop.mem_len === s"b$MEM_DWORD".U, io.wdata, SignExt32_64(io.wdata(31, 0)))
   wdata_amo := MuxLookup(
     io.uop.lsu_op,
     0.U,
     Array(
-      s"b$LSU_AMOSWAP".U -> io.wdata,
-      s"b$LSU_AMOADD".U  -> (io.wdata + rdata_amo),
-      s"b$LSU_AMOAND".U  -> (io.wdata & rdata_amo),
-      s"b$LSU_AMOOR".U   -> (io.wdata | rdata_amo),
-      s"b$LSU_AMOXOR".U  -> (io.wdata ^ rdata_amo),
-      s"b$LSU_AMOMAX".U  -> Mux(io.wdata.asSInt > rdata_amo.asSInt, io.wdata, rdata_amo),
-      s"b$LSU_AMOMAXU".U -> Mux(io.wdata.asUInt > rdata_amo.asUInt, io.wdata, rdata_amo),
-      s"b$LSU_AMOMIN".U  -> Mux(io.wdata.asSInt < rdata_amo.asSInt, io.wdata, rdata_amo),
-      s"b$LSU_AMOMINU".U -> Mux(io.wdata.asUInt < rdata_amo.asUInt, io.wdata, rdata_amo)
+      s"b$LSU_AMOSWAP".U -> wdata_raw,
+      s"b$LSU_AMOADD".U  -> (wdata_raw + rdata_amo),
+      s"b$LSU_AMOAND".U  -> (wdata_raw & rdata_amo),
+      s"b$LSU_AMOOR".U   -> (wdata_raw | rdata_amo),
+      s"b$LSU_AMOXOR".U  -> (wdata_raw ^ rdata_amo),
+      s"b$LSU_AMOMAX".U  -> Mux(wdata_raw.asSInt > rdata_amo.asSInt, wdata_raw, rdata_amo),
+      s"b$LSU_AMOMAXU".U -> Mux(wdata_raw.asUInt > rdata_amo.asUInt, wdata_raw, rdata_amo),
+      s"b$LSU_AMOMIN".U  -> Mux(wdata_raw.asSInt < rdata_amo.asSInt, wdata_raw, rdata_amo),
+      s"b$LSU_AMOMINU".U -> Mux(wdata_raw.asUInt < rdata_amo.asUInt, wdata_raw, rdata_amo)
     )
   )
 
