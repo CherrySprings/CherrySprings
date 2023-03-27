@@ -21,9 +21,10 @@ class CachePortResp(implicit p: Parameters) extends CherrySpringsBundle {
   val rdata        = Output(UInt(xLen.W))
   val page_fault   = Output(Bool())
   val access_fault = Output(Bool())
+  val mmio         = Output(Bool())
 
   override def toPrintable: Printable = {
-    cf"rdata=$rdata%x pf=$page_fault af=$access_fault"
+    cf"rdata=$rdata%x pf=$page_fault af=$access_fault mmio=$mmio"
   }
 }
 
@@ -96,6 +97,7 @@ class CachePortXBar1to2(implicit p: Parameters) extends CherrySpringsModule {
   // resp logic
   io.in.resp.bits      := Mux(to_1_r, io.out(1).resp.bits, io.out(0).resp.bits)
   io.in.resp.valid     := Mux(to_1_r, io.out(1).resp.valid, io.out(0).resp.valid)
+  io.in.resp.bits.mmio := to_1_r
   io.out(0).resp.ready := io.in.resp.ready
   io.out(1).resp.ready := io.in.resp.ready
 }

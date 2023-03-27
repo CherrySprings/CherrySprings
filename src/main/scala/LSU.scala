@@ -19,6 +19,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     val exc_code = Output(UInt(4.W))
     val dmem     = new CachePortIO
     val ready    = Output(Bool())
+    val is_mmio  = Output(Bool())
   })
 
   val req    = io.dmem.req
@@ -174,7 +175,8 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   io.rdata := Mux(is_sc, (!sc_succeed).asUInt, Mux(io.is_amo, rdata_amo, rdata))
   io.valid := (state === s_resp || state === s_amo_st_resp) && (resp.fire && !resp.bits.page_fault && !resp.bits.access_fault) ||
     sc_completed || (state === s_exc) // assert for only 1 cycle
-  io.ready := ((state === s_idle) && !io.is_mem) || io.valid
+  io.is_mmio := io.valid && resp.bits.mmio
+  io.ready   := ((state === s_idle) && !io.is_mem) || io.valid
 
   /*
    * exc_code Description

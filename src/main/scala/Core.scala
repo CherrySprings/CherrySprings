@@ -112,7 +112,6 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   val is_csr     = (id_ex.io.out.uop.fu === s"b$FU_CSR".U) && id_ex.io.out.uop.valid
   val is_store   = isStore(id_ex.io.out.uop.lsu_op)
   val is_amo     = isAmo(id_ex.io.out.uop.lsu_op)
-  val is_mmio    = is_mem && !(alu_br_out(paddrLen - 1).asBool) && (prv === PRV.M.U)
   val is_fence_i = (id_ex.io.out.uop.sys_op === s"b$SYS_FENCEI".U) && id_ex.io.out.uop.valid
   io.fence_i := is_fence_i
 
@@ -157,22 +156,22 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   /*
    * Data bus layout
    *
-   *               +---------+      +------------+
-   *  +-----+      |         |      |            | <--> dmem
-   *  |     |      |         | <--> | dmem_proxy |
-   *  | lsu | <--> | c2_xbar |      |            | <--> dptw
-   *  |     |      |         |      +------------+
-   *  +-----+      |         | <----------------------> uncache
-   *               +---------+
+   *               +------------+      +---------+
+   *  +-----+      |            |      |         | <--> dmem
+   *  |     |      |            | <--> | c2_xbar |
+   *  | lsu | <--> | dmem_proxy |      |         | <--> uncache
+   *  |     |      |            |      +---------+
+   *  +-----+      |            | <-------------------> dptw
+   *               +------------+
    */
 
   val c2_xbar = Module(new CachePortXBar1to2)
-  c2_xbar.io.in    <> lsu.io.dmem
-  c2_xbar.io.to_1  := is_mmio
-  dmem_proxy.io.in <> c2_xbar.io.out(0) // to data cache
-  io.uncache       <> c2_xbar.io.out(1) // to uncache
-  io.dmem          <> dmem_proxy.io.out
+  dmem_proxy.io.in <> lsu.io.dmem
   io.dptw          <> dmem_proxy.io.ptw
+  c2_xbar.io.in    <> dmem_proxy.io.out
+  c2_xbar.io.to_1  := !dmem_proxy.io.out.req.bits.addr(paddrLen - 1).asBool
+  io.dmem          <> c2_xbar.io.out(0) // to data cache
+  io.uncache       <> c2_xbar.io.out(1) // to uncache
 
   val ex_wb = Module(new PipelineReg(new XWPacket))
   ex_wb.io.in.uop := id_ex.io.out.uop
@@ -191,7 +190,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       s"b$FU_CSR".U -> csr.io.rw.rdata
     )
   )
-  ex_wb.io.in.is_mmio := is_mmio
+  ex_wb.io.in.is_mmio := lsu.io.is_mmio
   ex_wb.io.en         := true.B
   ex_wb.io.flush      := false.B
 
