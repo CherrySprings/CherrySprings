@@ -23,6 +23,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
       val cmd   = Input(UInt(CSR_X.length.W))
       val wdata = Input(UInt(xLen.W))
       val rdata = Output(UInt(xLen.W))
+      val valid = Output(Bool())
     }
     val prv          = Output(UInt(2.W))
     val mprv         = Output(Bool())
@@ -282,16 +283,18 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val tvm_en       = prv_is_s && mstatus_tvm.asBool
   // if satp is written with an unsupported MODE, the entire write has no effect
   val satp_wen = (wdata(62, 60) === 0.U)
+  io.sv39_en  := satp(63).asBool
+  io.satp_ppn := satp(43, 0)
   when(io.rw.addr === CSRs.satp.U) {
     rdata := satp
     when(wen && satp_wen) {
       satp         := wdata
+      io.sv39_en   := wdata(63).asBool // bypass
+      io.satp_ppn  := wdata(43, 0) // bypass
       satp_updated := prv_is_s // flush pipeline after satp updated if in S mode
     }
     csr_legal := prv_is_ms && !tvm_en
   }
-  io.sv39_en  := satp(63).asBool
-  io.satp_ppn := satp(43, 0)
 
   /*
    * Number:      0xF11
@@ -614,6 +617,24 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   io.cycle := cycle
 
   /*
+   * Number:      0xC01
+   * Privilege:   URO
+   * Name:        time
+   * Description: Timer for RDTIME instruction
+   */
+  val time       = RegInit(UInt(64.W), 0.U)
+  val timer_cnt  = RegInit(coreTimerFreq.U)
+  val timer_tick = (timer_cnt === 0.U)
+  timer_cnt := Mux(timer_tick, coreTimerFreq.U, timer_cnt - 1.U)
+  when(timer_tick) {
+    time := time + 1.U
+  }
+  when(io.rw.addr === CSRs.time.U) {
+    rdata     := time
+    csr_legal := prv_is_m || (prv_is_s && mcounteren(1)) || (prv_is_u && mcounteren(1) && scounteren(1))
+  }
+
+  /*
    * Number:      0xB02 / 0xC02
    * Privilege:   MRW / URO
    * Name:        minstret / instret
@@ -637,6 +658,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
 
   // CSR module output
   io.rw.rdata := rdata
+  io.rw.valid := csr_legal
   io.prv      := prv
 
   /*
@@ -718,9 +740,6 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val tval = WireDefault(0.U(xLen.W))
   when(is_exc_from_lsu) {
     tval := io.lsu_addr
-  }
-  when(io.uop.exc === s"b$EXC_II".U) {
-    tval := io.uop.instr
   }
   when(io.uop.exc === s"b$EXC_IPF".U) {
     tval := io.uop.pc

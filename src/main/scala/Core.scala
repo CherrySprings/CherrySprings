@@ -178,8 +178,9 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   ex_wb.io.in.uop.valid := (
     (is_mem && lsu.io.valid && (lsu.io.exc_code === 0.U)) ||
       (is_mdu && mdu.io.valid) ||
+      (is_csr && csr.io.rw.valid) ||
       (is_fence_i && io.fence_i_ok) ||
-      (!is_mem && !is_mdu && !is_fence_i && id_ex.io.out.uop.valid)
+      (!is_mem && !is_mdu && !is_csr && !is_fence_i && id_ex.io.out.uop.valid)
   ) && !csr.io.is_int
   ex_wb.io.in.rd_data := MuxLookup(
     id_ex.io.out.uop.fu,
@@ -197,9 +198,6 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   /* ----- Stage 5 - Write Back (WB) --------------- */
 
   val commit_uop = ex_wb.io.out.uop
-  val commit_is_cycle = commit_uop.valid && (commit_uop.fu === s"b$FU_CSR".U) &&
-    (commit_uop.instr(31, 20) === CSRs.mcycle.U || commit_uop.instr(31, 20) === CSRs.cycle.U)
-  val commit_skip = (commit_uop.instr === PUTCH()) || ex_wb.io.out.is_mmio || commit_is_cycle
   rf.io.rd_wen   := commit_uop.valid && commit_uop.rd_wen
   rf.io.rd_index := commit_uop.rd_index
   rf.io.rd_data  := ex_wb.io.out.rd_data
@@ -271,6 +269,12 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   /* ----- Processor Difftest -------------------- */
 
   if (enableDifftest) {
+    val commit_is_cycle = commit_uop.valid && (commit_uop.fu === s"b$FU_CSR".U) &&
+      (commit_uop.instr(31, 20) === CSRs.mcycle.U || commit_uop.instr(31, 20) === CSRs.cycle.U)
+    val commit_is_time = commit_uop.valid && (commit_uop.fu === s"b$FU_CSR".U) &&
+      (commit_uop.instr(31, 20) === CSRs.time.U)
+    val commit_skip = (commit_uop.instr === PUTCH()) || ex_wb.io.out.is_mmio || commit_is_cycle || commit_is_time
+
     val diff_ic = Module(new DifftestInstrCommit)
     diff_ic.io.clock   := clock
     diff_ic.io.coreid  := hartID.U

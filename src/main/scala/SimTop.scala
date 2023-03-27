@@ -8,7 +8,7 @@ import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.interrupts._
 import freechips.rocketchip.util._
 
-class SimTop(implicit p: Parameters) extends LazyModule with BindingScope {
+class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with HasCherrySpringsParameters {
   lazy val dts = DTS(bindingTree)
 
   val soc   = LazyModule(new SoC)
@@ -53,10 +53,9 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope {
     uart.module.io <> io.uart
 
     // CLINT
-    val freq = 100
-    val cnt  = RegInit(freq.U)
+    val cnt  = RegInit(fpgaTimerFreq.U)
     val tick = (cnt === 0.U)
-    cnt                     := Mux(tick, freq.U, cnt - 1.U)
+    cnt                     := Mux(tick, fpgaTimerFreq.U, cnt - 1.U)
     clint.module.io.rtcTick := tick
   }
 }
