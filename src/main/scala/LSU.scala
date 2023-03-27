@@ -64,7 +64,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
 
   when(req.fire && is_lr) {
     lrsc_reserved := true.B
-    lrsc_addr     := req.bits.addr
+    lrsc_addr     := io.addr
   }
   when(is_sc && sc_completed) {
     lrsc_reserved := false.B
