@@ -783,6 +783,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   }
 
   // CSR / SYS control flow
+  io.jmp_packet        := 0.U.asTypeOf(new JmpPacket)
   io.jmp_packet.valid  := trap || is_sys || satp_updated || (is_mret && mret_legal) || (is_sret && sret_legal)
   io.jmp_packet.target := Mux(trap, trap_pc, Mux(is_sys || satp_updated, io.uop.npc, Mux(is_mret, mepc, sepc)))
 

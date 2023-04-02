@@ -7,6 +7,7 @@ class IF0(implicit p: Parameters) extends CherrySpringsModule {
     val jmp_packet = Input(new JmpPacket)
     val req        = Decoupled(new CachePortReq)
     val req_addr   = Output(UInt(vaddrLen.W))
+    val bp_npc     = Output(UInt(xLen.W))
     val stall_b    = Input(Bool())
   })
 
@@ -15,8 +16,19 @@ class IF0(implicit p: Parameters) extends CherrySpringsModule {
   val pc         = RegEnable(pc_next, resetPC.U, pc_update)
   val jmp_target = Wire(UInt(xLen.W))
 
+  val pc_next_raw = Wire(UInt(xLen.W))
+  if (enableBPU) {
+    val bpu = Module(new BPU)
+    bpu.io.pc         := pc
+    bpu.io.jmp_packet := io.jmp_packet
+    pc_next_raw       := bpu.io.out
+  } else {
+    pc_next_raw := pc + 4.U
+  }
+  io.bp_npc := pc_next_raw
+
   jmp_target := Cat(io.jmp_packet.target(xLen - 1, 2), 0.U(2.W))
-  pc_next    := Mux(io.jmp_packet.valid, jmp_target + Mux(io.req.fire, 4.U, 0.U), pc + 4.U)
+  pc_next    := Mux(io.jmp_packet.valid, jmp_target + Mux(io.req.fire, 4.U, 0.U), pc_next_raw)
 
   io.req_addr      := Mux(io.jmp_packet.valid, jmp_target, pc)
   io.req.bits      := 0.U.asTypeOf(new CachePortReq)
@@ -54,7 +66,6 @@ class IF1(implicit p: Parameters) extends CherrySpringsModule {
     is(s_resp) {
       when(io.resp.fire) {
         state := Mux(io.jmp_packet.valid, s_init, s_resp)
-        // Mux(state_to_wait, s_wait, Mux(io.jmp_packet.valid, s_init, s_resp))
       }
     }
     is(s_wait) {
@@ -82,9 +93,11 @@ class IFU(implicit p: Parameters) extends CherrySpringsModule {
     val stall_b    = Input(Bool())
   })
 
-  val if0      = Module(new IF0)
-  val if1      = Module(new IF1)
-  val pc_queue = Module(new Queue(UInt(vaddrLen.W), 1, pipe = true))
+  val if0 = Module(new IF0)
+  val if1 = Module(new IF1)
+
+  val pc_queue     = Module(new Queue(UInt(vaddrLen.W), 1, pipe = true))
+  val bp_npc_queue = Module(new Queue(UInt(xLen.W), 1, pipe = true))
 
   if0.io.jmp_packet := io.jmp_packet
   if0.io.req        <> io.imem.req
@@ -100,11 +113,16 @@ class IFU(implicit p: Parameters) extends CherrySpringsModule {
   pc_queue.io.enq.valid := io.imem.req.fire
   pc_queue.io.deq.ready := io.imem.resp.fire
 
+  bp_npc_queue.io.enq.bits  := if0.io.bp_npc
+  bp_npc_queue.io.enq.valid := io.imem.req.fire
+  bp_npc_queue.io.deq.ready := io.imem.resp.fire
+
   io.out              := if1.io.out
   io.out.pc           := SignExt39_64(pc_queue.io.deq.bits)
   io.out.instr        := Mux(io.out.pc(2), io.imem.resp.bits.rdata(63, 32), io.imem.resp.bits.rdata(31, 0))
   io.out.page_fault   := io.imem.resp.bits.page_fault
   io.out.access_fault := io.imem.resp.bits.access_fault
+  io.out.bp_npc       := bp_npc_queue.io.deq.bits
 
   if (debugInstrFetch) {
     when(io.out.valid) {

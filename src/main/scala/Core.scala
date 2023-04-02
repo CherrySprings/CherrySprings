@@ -33,8 +33,6 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     case IsITLB => true
     case IsDTLB => false
   })))
-  val alu_jmp_packet = Wire(new JmpPacket) // from EX stage
-  val sys_jmp_packet = Wire(new JmpPacket) // from MEM stage
   imem_proxy.io.in         <> ifu.io.imem
   imem_proxy.io.out        <> io.imem
   imem_proxy.io.ptw        <> io.iptw
@@ -42,8 +40,14 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   imem_proxy.io.sv39_en    := sv39_en
   imem_proxy.io.satp_ppn   := satp_ppn
   imem_proxy.io.sfence_vma := sfence_vma
-  ifu.io.jmp_packet.valid  := alu_jmp_packet.valid || sys_jmp_packet.valid
-  ifu.io.jmp_packet.target := Mux(sys_jmp_packet.valid, sys_jmp_packet.target, alu_jmp_packet.target)
+
+  val alu_jmp_packet = Wire(new JmpPacket) // from EX stage
+  val sys_jmp_packet = Wire(new JmpPacket) // from MEM stage
+  ifu.io.jmp_packet.valid     := alu_jmp_packet.valid || sys_jmp_packet.valid
+  ifu.io.jmp_packet.target    := Mux(sys_jmp_packet.valid, sys_jmp_packet.target, alu_jmp_packet.target)
+  ifu.io.jmp_packet.bp_update := alu_jmp_packet.bp_update
+  ifu.io.jmp_packet.bp_taken  := alu_jmp_packet.bp_taken
+  ifu.io.jmp_packet.bp_pc     := alu_jmp_packet.bp_pc
 
   /* ----- Stage 2 - Instruction Buffer (IB) ------- */
 
@@ -75,6 +79,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   id_ex.io.in.rs1_data         := id_rs1_data
   id_ex.io.in.rs2_data         := id_rs2_data
   id_ex.io.in.rs2_data_from_rf := id_rs2_data_from_rf
+  id_ex.io.in.bp_npc           := instr_buffer.io.deq.bits.bp_npc
   id_ex.io.en                  := stall_b
   id_ex.io.flush               := flush
 
@@ -85,7 +90,14 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   alu.io.in1 := id_ex.io.out.rs1_data
   alu.io.in2 := id_ex.io.out.rs2_data
 
-  alu_jmp_packet.valid := MuxLookup(
+  alu_jmp_packet.valid := alu_jmp_packet.bp_update && (alu_jmp_packet.target =/= id_ex.io.out.bp_npc)
+  alu_jmp_packet.target := Mux(
+    alu.io.uop.jmp_op === s"b$JMP_BR".U,
+    Mux(alu.io.cmp_out, id_ex.io.out.uop.pc + SignExt32_64(id_ex.io.out.uop.imm), id_ex.io.out.uop.npc),
+    alu.io.adder_out
+  )
+  alu_jmp_packet.bp_update := id_ex.io.out.uop.valid && (alu.io.uop.jmp_op =/= s"b$JMP_N".U)
+  alu_jmp_packet.bp_taken := MuxLookup(
     alu.io.uop.jmp_op,
     false.B,
     Array(
@@ -94,11 +106,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
       s"b$JMP_JALR".U -> true.B
     )
   )
-  alu_jmp_packet.target := Mux(
-    alu.io.uop.jmp_op === s"b$JMP_BR".U,
-    id_ex.io.out.uop.pc + SignExt32_64(id_ex.io.out.uop.imm),
-    alu.io.adder_out
-  )
+  alu_jmp_packet.bp_pc := id_ex.io.out.uop.pc
 
   val alu_br_out = Wire(UInt(xLen.W))
   alu_br_out := Mux(

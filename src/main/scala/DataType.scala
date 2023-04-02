@@ -8,9 +8,10 @@ class FDPacket(implicit p: Parameters) extends CherrySpringsBundle {
   val valid        = Bool()
   val page_fault   = Bool()
   val access_fault = Bool()
+  val bp_npc       = UInt(xLen.W)
 
   override def toPrintable: Printable = {
-    cf"v=$valid pc=$pc%x instr=$instr%x pf=$page_fault af=$access_fault"
+    cf"v=$valid pc=$pc%x instr=$instr%x pf=$page_fault af=$access_fault bp_npc=$bp_npc%x"
   }
 }
 
@@ -19,6 +20,7 @@ class DXPacket(implicit p: Parameters) extends CherrySpringsBundle {
   val rs1_data         = UInt(xLen.W)
   val rs2_data         = UInt(xLen.W)
   val rs2_data_from_rf = UInt(xLen.W)
+  val bp_npc           = UInt(xLen.W)
 }
 
 class XWPacket(implicit p: Parameters) extends CherrySpringsBundle {
@@ -40,8 +42,13 @@ class PipelineReg[T <: Bundle](packet: T)(implicit p: Parameters) extends Cherry
 }
 
 class JmpPacket(implicit p: Parameters) extends CherrySpringsBundle {
-  val valid  = Bool()
+  val valid  = Bool() // need to redirect to target address
   val target = UInt(xLen.W)
+
+  // only valid for branch, jal, jalr
+  val bp_update = Bool()
+  val bp_taken  = Bool()
+  val bp_pc     = UInt(xLen.W)
 }
 
 class ExternalInterruptIO(implicit p: Parameters) extends CherrySpringsBundle {
