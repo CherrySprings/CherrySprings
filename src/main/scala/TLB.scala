@@ -46,25 +46,27 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   assert(io.rlevel =/= 3.U)
   assert(io.wlevel =/= 3.U)
 
+  // TLB sizes
+  val tlb4kb_size = 16
+  val tlb2mb_size = 4
+  val tlb1gb_size = 2
+
   // random replacement
   val replace_idx = Wire(UInt(log2Up(tlb4kb_size).W))
-  replace_idx := LFSR(16)
+  replace_idx := LFSR(log2Up(tlb4kb_size))
 
   /*
    * TLB - 4 KB page
    */
-  val tlb4kb_size    = 16
   val array4kb       = RegInit(VecInit(Seq.fill(tlb4kb_size)(0.U.asTypeOf(new TLB4KBEntry))))
   val array4kb_valid = RegInit(VecInit(Seq.fill(tlb4kb_size)(false.B))) // not "valid" in PTE
   val array4kb_rdata = WireDefault(0.U.asTypeOf(new TLB4KBEntry))
   val array4kb_wdata = Wire(new TLB4KBEntry)
   val hit4kb         = WireDefault(false.B)
-  val hit4kb_way     = WireDefault(0.U(log2Up(tlb4kb_size).W))
   // read
   for (i <- 0 until tlb4kb_size) {
     when(array4kb_valid(i) && (array4kb(i).vpn === io.vaddr.vpn)) {
       hit4kb         := true.B
-      hit4kb_way     := i.U
       array4kb_rdata := array4kb(i)
     }
   }
@@ -89,7 +91,6 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   /*
    * TLB - 2 MB page
    */
-  val tlb2mb_size    = 4
   val array2mb       = RegInit(VecInit(Seq.fill(tlb2mb_size)(0.U.asTypeOf(new TLB2MBEntry))))
   val array2mb_valid = RegInit(VecInit(Seq.fill(tlb2mb_size)(false.B)))
   val array2mb_rdata = Wire(new TLB2MBEntry)
@@ -118,7 +119,6 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   /*
    * TLB - 1 GB page
    */
-  val tlb1gb_size    = 2
   val array1gb       = RegInit(VecInit(Seq.fill(tlb1gb_size)(0.U.asTypeOf(new TLB1GBEntry))))
   val array1gb_valid = RegInit(VecInit(Seq.fill(tlb1gb_size)(false.B)))
   val array1gb_rdata = Wire(new TLB1GBEntry)
