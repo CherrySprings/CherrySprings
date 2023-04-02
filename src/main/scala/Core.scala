@@ -142,7 +142,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   csr.io.fence_i_ok   := io.fence_i_ok
   csr.io.lsu_addr     := lsu.io.addr
   csr.io.lsu_exc_code := lsu.io.exc_code
-  csr.io.mtip         := io.interrupt.mtip
+  csr.io.interrupt    := io.interrupt
 
   val dmem_proxy = Module(new CachePortProxy()(p.alterPartial({
     case IsITLB => false

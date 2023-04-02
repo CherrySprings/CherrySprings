@@ -30,7 +30,10 @@ class UART(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
   val TxFifoDepth = 4
 
   lazy val module = new LazyModuleImp(this) {
-    val io         = IO(new UARTIO)
+    val io = IO(new Bundle {
+      val uart = new UARTIO
+      val intr = Output(Bool())
+    })
     val (tl, edge) = node.in.head
 
     val s_req :: s_resp :: Nil = Enum(2)
@@ -65,6 +68,15 @@ class UART(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
 
     val rx = Module(new Queue(UInt(8.W), entries = RxFifoDepth, hasFlush = true))
     val tx = Module(new Queue(UInt(8.W), entries = TxFifoDepth, hasFlush = true))
+
+    val intr_en       = RegInit(false.B)
+    val tx_just_empty = RegInit(false.B)
+
+    when(tl.a.fire && is_get) {
+      tx_just_empty := false.B
+    }.elsewhen(!tx.io.deq.valid && RegNext(tx.io.deq.valid)) {
+      tx_just_empty := true.B
+    }
 
     val rdata = WireDefault(0.U(32.W))
 
@@ -101,7 +113,8 @@ class UART(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
     status_tx_fifo_empty      := (tx.io.count === 0.U)
     status_tx_fifo_full       := (tx.io.count === TxFifoDepth.U)
     status := Cat(
-      0.U(28.W),
+      0.U(27.W),
+      intr_en.asUInt,
       status_tx_fifo_full,
       status_tx_fifo_empty,
       status_rx_fifo_full,
@@ -124,21 +137,31 @@ class UART(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
         when(req_r.data(1)) {
           rx.io.flush.get := true.B
         }
+        // enable interrupt
+        when(req_r.data(4)) {
+          intr_en := true.B
+        }
       }
     }
 
+    // interrupt
+    io.intr := false.B
+    when(intr_en) {
+      io.intr := status_rx_fifo_valid_data || tx_just_empty
+    }
+
     // output
-    tx.io.deq.ready := true.B
-    io.out.valid    := tx.io.deq.valid
-    io.out.ch       := tx.io.deq.bits
-    when(io.out.valid) {
-      printf("%c", io.out.ch)
+    tx.io.deq.ready   := true.B
+    io.uart.out.valid := tx.io.deq.valid
+    io.uart.out.ch    := tx.io.deq.bits
+    when(io.uart.out.valid) {
+      printf("%c", io.uart.out.ch)
     }
 
     // input
-    rx.io.enq.valid := false.B
-    rx.io.enq.bits  := 0.U
-    io.in.valid     := false.B
+    rx.io.enq.valid  := (io.uart.in.ch =/= "hff".U)
+    rx.io.enq.bits   := io.uart.in.ch
+    io.uart.in.valid := rx.io.enq.ready
 
     tl.a.ready := (state === s_req)
     tl.d.valid := (state === s_resp)

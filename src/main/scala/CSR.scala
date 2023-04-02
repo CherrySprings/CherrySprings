@@ -35,7 +35,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     val jmp_packet   = Output(new JmpPacket)
     val lsu_addr     = Input(UInt(xLen.W))
     val lsu_exc_code = Input(UInt(4.W))
-    val mtip         = Input(Bool())
+    val interrupt    = new ExternalInterruptIO
     val is_int       = Output(Bool())
 
     val cycle   = Output(UInt(xLen.W))
@@ -553,13 +553,13 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val sip     = WireDefault(0.U(xLen.W))
   val ip_usip = RegInit(0.U(1.W))
   val ip_ssip = RegInit(0.U(1.W))
-  val ip_msip = RegInit(0.U(1.W))
+  val ip_msip = io.interrupt.msip
   val ip_utip = RegInit(0.U(1.W))
   val ip_stip = RegInit(0.U(1.W))
-  val ip_mtip = io.mtip
+  val ip_mtip = io.interrupt.mtip
   val ip_ueip = RegInit(0.U(1.W))
-  val ip_seip = RegInit(0.U(1.W))
-  val ip_meip = RegInit(0.U(1.W))
+  val ip_seip = io.interrupt.seip
+  val ip_meip = io.interrupt.meip
   mip := Cat(
     0.U(52.W),
     ip_meip,
@@ -709,8 +709,14 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val is_exc_from_csr  = !csr_legal && (io.rw.cmd =/= s"b$CSR_N".U)
   val is_exc_from_sys  = (is_mret && !mret_legal) || (is_sret && !sret_legal) || (is_sfv && !sfv_legal)
   val is_exc           = is_exc_from_prev || is_exc_from_lsu || is_exc_from_csr
+
   val is_int_clint     = ie_mtie.asBool && ip_mtip
-  val is_int           = mstatus_mie.asBool && is_int_clint && io.uop.valid && (io.uop.fu === s"b$FU_ALU".U)
+  val is_int_mexternal = ie_meie.asBool && ip_meip
+  val is_int_sexternal = ie_seie.asBool && ip_seip
+  val is_int_software  = ie_msie.asBool && ip_msip
+  val is_int = mstatus_mie.asBool && (is_int_clint || is_int_mexternal || is_int_sexternal || is_int_software) &&
+    io.uop.valid && (io.uop.fu === s"b$FU_ALU".U)
+
   val cause_exc        = Wire(UInt(4.W))
   val cause_exc_onehot = Wire(UInt(16.W))
   val cause_int        = Wire(UInt(4.W))
@@ -733,7 +739,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   )
 
   cause_exc_onehot := UIntToOH(cause_exc)
-  cause_int        := 7.U // todo: only MTIP, implement other interrupts
+  cause_int        := Mux(is_int_clint, 7.U, Mux(is_int_mexternal, 11.U, Mux(is_int_sexternal, 9.U, 3.U)))
   cause_int_onehot := UIntToOH(cause_int)
   io.is_int        := is_int
 

@@ -37,12 +37,22 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with H
     }
   }
 
-  val plicSource = LazyModule(new IntSourceNodeToModule(16))
+  val plicSource = LazyModule(new IntSourceNodeToModule(2))
 
   plic.intnode := plicSource.sourceNode
 
   lazy val module = new LazyModuleImp(this) {
     ElaborationArtefacts.add("dts", dts)
+
+    // sync external interrupts
+    val ext_intrs = Wire(UInt(2.W))
+    ext_intrs := Cat(uart.module.io.intr, 0.U)
+    require(plicSource.module.in.length == ext_intrs.getWidth)
+    for ((plic_in, interrupt) <- plicSource.module.in.zip(ext_intrs.asBools)) {
+      val ext_intr_sync = RegInit(0.U(3.W))
+      ext_intr_sync := Cat(ext_intr_sync(1, 0), interrupt)
+      plic_in       := ext_intr_sync(2)
+    }
 
     val io = IO(new Bundle {
       val logCtrl  = new LogCtrlIO
@@ -50,7 +60,7 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with H
       val uart     = new UARTIO
     })
 
-    uart.module.io <> io.uart
+    uart.module.io.uart <> io.uart
 
     // CLINT
     val cnt  = RegInit(fpgaTimerFreq.U)
