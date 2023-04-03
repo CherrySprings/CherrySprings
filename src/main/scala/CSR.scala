@@ -331,12 +331,18 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
 
   /*
    * Number:      0xF14
-   * Privilege:   MRO
+   * Privilege:   MRO (Writable in CherrySprings BootROM)
    * Name:        mhartid
    * Description: Hardware thread ID
    */
+  val mhartid          = RegInit(0.U(xLen.W))
+  val mhartid_writable = RegInit(true.B)
   when(io.rw.addr === CSRs.mhartid.U) {
-    rdata     := hartID.U
+    rdata := mhartid
+    when(wen && mhartid_writable) {
+      mhartid          := wdata
+      mhartid_writable := false.B
+    }
     csr_legal := prv_is_m
   }
 

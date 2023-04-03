@@ -2,37 +2,47 @@ import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config._
 import freechips.rocketchip.subsystem._
+import java.security.cert.PKIXParameters
 
-case object EnableDifftest extends Field[Boolean]
-case object ResetPC extends Field[BigInt]
 case object HartID extends Field[Int]
+case object ResetPC extends Field[BigInt]
+case object BootROMImage extends Field[String]
 case object CacheNumSets extends Field[Int]
 case object EnableBPU extends Field[Boolean]
 case object PHTSize extends Field[Int]
 case object BTBSize extends Field[Int]
-case object CoreTimerFreq extends Field[Int]
-case object FpgaTimerFreq extends Field[Int]
 
 class CoreConfig
     extends Config((site, here, up) => {
+      case HartID        => 0
+      case ResetPC       => BigInt("00010000", radix = 16)
+      case BootROMImage  => "./bootrom/bootrom.img"
+      case CacheNumSets  => 512 // 16 KB
+      case EnableBPU     => true
+      case PHTSize       => 512
+      case BTBSize       => 16
+      case CoreTimerFreq => 10 // suppose 100 MHz core frequency => 10 MHz timer frequency
+      case FpgaTimerFreq => 10 // suppose 100 MHz FPGA frequency => 10 MHz timer frequency
+    })
+
+case object EnableDifftest extends Field[Boolean]
+case object CoreTimerFreq extends Field[Int]
+case object FpgaTimerFreq extends Field[Int]
+
+class SystemConfig
+    extends Config((site, here, up) => {
       case EnableDifftest => true
-      case ResetPC        => BigInt("80000000", 16)
-      case HartID         => 0
-      case CacheNumSets   => 512 // 16 KB
-      case EnableBPU      => false
-      case PHTSize        => 512
-      case BTBSize        => 16
       case CoreTimerFreq  => 10 // suppose 100 MHz core frequency => 10 MHz timer frequency
       case FpgaTimerFreq  => 10 // suppose 100 MHz FPGA frequency => 10 MHz timer frequency
     })
 
-class CherrySpringsConfig extends Config(new CoreConfig)
+class CherrySpringsConfig extends Config(new CoreConfig ++ new SystemConfig)
 
 trait HasCherrySpringsParameters {
   implicit val p: Parameters
-  def enableDifftest:   Boolean = p(EnableDifftest)
-  def resetPC:          BigInt  = p(ResetPC)
   def hartID:           Int     = p(HartID)
+  def resetPC:          BigInt  = p(ResetPC)
+  def bootROMImage:     String  = p(BootROMImage)
   def xLen:             Int     = 64
   def paddrLen:         Int     = 32
   def vaddrLen:         Int     = 39
@@ -41,6 +51,7 @@ trait HasCherrySpringsParameters {
   def phtSize:          Int     = p(PHTSize)
   def enableBPU:        Boolean = p(EnableBPU)
   def btbSize:          Int     = p(BTBSize)
+  def enableDifftest:   Boolean = p(EnableDifftest)
   def ghrLen:           Int     = log2Up(phtSize)
   def coreTimerFreq:    Int     = p(CoreTimerFreq)
   def fpgaTimerFreq:    Int     = p(FpgaTimerFreq)
