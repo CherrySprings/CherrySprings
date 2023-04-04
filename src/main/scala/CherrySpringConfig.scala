@@ -2,7 +2,6 @@ import chisel3._
 import chisel3.util._
 import chipsalliance.rocketchip.config._
 import freechips.rocketchip.subsystem._
-import java.security.cert.PKIXParameters
 
 case object HartID extends Field[Int]
 case object ResetPC extends Field[BigInt]
