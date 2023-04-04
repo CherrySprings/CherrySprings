@@ -4,7 +4,6 @@ import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import chisel3.util.random._
-import dataclass.data
 
 class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   require(xLen == 64)
@@ -14,11 +13,8 @@ class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       TLMasterPortParameters.v1(
         clients = Seq(
           TLMasterParameters.v1(
-            name            = s"InstructionCache",
-            sourceId        = IdRange(0, sourceRange),
-            supportsProbe   = TransferSizes(xLen),
-            supportsGet     = TransferSizes(xLen),
-            supportsPutFull = TransferSizes(xLen)
+            name     = s"InstructionCache",
+            sourceId = IdRange(0, sourceRange)
           )
         )
       )
