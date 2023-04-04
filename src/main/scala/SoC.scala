@@ -1,16 +1,24 @@
 import chisel3._
 import difftest._
-import chipsalliance.rocketchip.config.Parameters
+import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
+import sifive.blocks.devices.chiplink._
+
+object ChipLinkParam {
+  val mem      = AddressSet(0x80000000L, 0x80000000L - 1)
+  val mmio     = AddressSet(0x00000000L, 0x70000000L - 1)
+  val allSpace = Seq(mem, mmio)
+  val idBits   = 4
+}
 
 class SoC(implicit p: Parameters) extends LazyModule {
   val icache  = LazyModule(new ICache)
   val dcache  = LazyModule(new DCache)
   val uncache = LazyModule(new UncacheCachePortToTileLinkBridge)
   val xbar    = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
-  val node    = TLIdentityNode()
 
   // interrupt sinks
   val clint_int_sink = IntSinkNode(IntSinkPortSimple(1, 2))
@@ -20,9 +28,32 @@ class SoC(implicit p: Parameters) extends LazyModule {
   xbar.node := icache.node // 0
   xbar.node := dcache.node // 1
   xbar.node := uncache.node // 2
-  node      := xbar.node
+
+  // ChipLink
+  val chiplink = LazyModule(
+    new ChipLink(
+      ChipLinkParams(
+        TLUH   = List(ChipLinkParam.mmio),
+        TLC    = List(ChipLinkParam.mem),
+        syncTX = true
+      )
+    )
+  )
+  chiplink.node := xbar.node
+
+  val err = LazyModule(
+    new TLError(
+      DevNullParams(Seq(AddressSet(0x70000000L, 0x1000L - 1)), 64, 64, region = RegionType.TRACKED),
+      beatBytes = 4
+    )
+  )
+  err.node := chiplink.node
+
+  val chiplink_sink = chiplink.ioNode.makeSink
 
   lazy val module = new LazyModuleImp(this) {
+    val chiplink_io = chiplink_sink.makeIO()
+    dontTouch(chiplink_io)
 
     val core = Module(new Core)
 

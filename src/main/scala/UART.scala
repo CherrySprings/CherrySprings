@@ -7,7 +7,7 @@ import difftest._
 
 class UART(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   val device    = new SimpleDevice("uartlite", Seq("uartlite-0"))
-  val beatBytes = 4
+  val beatBytes = 8
   val node = TLManagerNode(
     Seq(
       TLSlavePortParameters.v1(
@@ -15,7 +15,7 @@ class UART(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
           TLSlaveParameters.v1(
             address            = Seq(AddressSet(BigInt("10000000", 16), BigInt("ffff", 16))),
             resources          = device.reg,
-            regionType         = RegionType.UNCACHED,
+            regionType         = RegionType.GET_EFFECTS,
             supportsGet        = TransferSizes(1, beatBytes),
             supportsPutFull    = TransferSizes(1, beatBytes),
             supportsPutPartial = TransferSizes(1, beatBytes)

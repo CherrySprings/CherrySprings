@@ -7,6 +7,7 @@ import freechips.rocketchip.tilelink._
 import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.interrupts._
 import freechips.rocketchip.util._
+import sifive.blocks.devices.chiplink._
 import java.nio._
 import java.nio.file._
 
@@ -15,6 +16,7 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with H
 
   val soc               = LazyModule(new SoC)
   val xbar              = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
+  val pbar              = LazyModule(new TLXbar())
   val hart_id_allocator = LazyModule(new HartIDAllocator)
   val clint             = LazyModule(new CLINT(CLINTParams(), 8))
   val plic              = LazyModule(new TLPLIC(PLICParams(), 8))
@@ -36,15 +38,44 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with H
     )
   )
 
-  xbar.node := TLBuffer(abcde = BufferParams(depth = 2, flow = false, pipe = false)) := soc.node
+  // ChipLink
+  val chiplink = LazyModule(
+    new ChipLink(
+      ChipLinkParams(
+        TLUH   = List(ChipLinkParam.mmio),
+        TLC    = List(ChipLinkParam.mem),
+        syncTX = true
+      )
+    )
+  )
+  val chiplink_sink = chiplink.ioNode.makeSink
+
+  val dummy = LazyModule(new TLDummyClient)
+  chiplink.node := dummy.node
+
+  val err = LazyModule(
+    new TLError(
+      DevNullParams(Seq(AddressSet(0x70000000L, 0x1000L - 1)), 64, 64, region = RegionType.TRACKED),
+      beatBytes = 8
+    )
+  )
+  xbar.node := (TLBuffer(abcde = BufferParams(depth = 2, flow = false, pipe = false))
+    := TLFIFOFixer(TLFIFOFixer.all)
+    := TLAtomicAutomata()
+    := TLHintHandler()
+    := TLWidthWidget(4)
+    := chiplink.node)
+  err.node := xbar.node
 
   // don't modify order of following nodes
-  mem.node               := TLDelayer(0.1)      := xbar.node
-  rom.node               := TLFragmenter(8, 32) := xbar.node
-  hart_id_allocator.node := xbar.node
-  clint.node             := xbar.node
-  plic.node              := xbar.node
-  uart.node              := TLWidthWidget(8)    := xbar.node
+  mem.node  := xbar.node
+  pbar.node := TLFIFOFixer(TLFIFOFixer.all) := TLFragmenter(8, 32) := TLFIFOFixer(TLFIFOFixer.all) := xbar.node
+
+  rom.node               := pbar.node
+  hart_id_allocator.node := pbar.node
+  clint.node             := pbar.node
+  plic.node              := pbar.node
+  uart.node              := pbar.node
 
   soc.clint_int_sink := clint.intnode
   soc.plic_int_sink :*= plic.intnode
@@ -63,6 +94,9 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with H
 
   lazy val module = new LazyModuleImp(this) {
     ElaborationArtefacts.add("dts", dts)
+
+    chiplink_sink.bundle.b2c <> soc.module.chiplink_io.b2c
+    chiplink_sink.bundle.c2b <> soc.module.chiplink_io.c2b
 
     // sync external interrupts
     val ext_intrs = Wire(UInt(2.W))
