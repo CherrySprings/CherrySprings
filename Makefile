@@ -1,10 +1,11 @@
 BUILD_DIR = ./build
 SRC = src/main/scala/$(wildcard *.scala)
 EMU_FLAGS = EMU_TRACE=1 EMU_CXX_EXTRA_FLAGS="-DFIRST_INST_ADDRESS=0x80000000" WITH_CHISELDB=0
+TARGET ?= fast-sim
 
 verilog: $(SRC)
 	@mkdir -p $(BUILD_DIR)
-	sbt "run -td $(BUILD_DIR)"
+	sbt "run $(TARGET) -td $(BUILD_DIR)"
 	@mv *.v $(BUILD_DIR)
 	@mv firrtl_black_box_resource_files.f $(BUILD_DIR)
 

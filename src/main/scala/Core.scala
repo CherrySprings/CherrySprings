@@ -307,7 +307,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
         printf(cf"${DebugTimer()} [COMMIT] pc=${commit_uop.pc}%x instr=${commit_uop.instr}%x prv=$prv\n")
       }
     }
-    if (enablePCTrace) {
+    if (debugPCTrace) {
       when(commit_uop.valid) {
         printf(cf"${commit_uop.pc}%x\n")
       }
