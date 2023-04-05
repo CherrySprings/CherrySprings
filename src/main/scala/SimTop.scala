@@ -10,8 +10,6 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope {
   val soc  = LazyModule(new SoC)
   val fpga = LazyModule(new FPGA)
 
-  fpga.node := soc.node
-
   soc.clint_int_sink := fpga.clint.intnode
   soc.plic_int_sink :*= fpga.plic.intnode
 
@@ -24,6 +22,10 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope {
       val uart     = new UARTIO
     })
 
-    io.uart <> fpga.module.io.uart
+    fpga.module.io.tl <> soc.module.io.tl
+    io.uart           <> fpga.module.io.uart
+
+    dontTouch(fpga.module.io.tl)
+    dontTouch(soc.module.io.tl)
   }
 }

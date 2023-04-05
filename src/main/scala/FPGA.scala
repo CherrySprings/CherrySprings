@@ -16,7 +16,7 @@ class FPGA(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
   val plic              = LazyModule(new TLPLIC(PLICParams(), 8))
   val uart              = LazyModule(new UART)
   val mem               = LazyModule(new TLVirtualRam)
-  val node              = TLIdentityNode()
+  val source            = LazyModule(new TLSource)
 
   // BootROM
   lazy val boot_rom_contents = {
@@ -41,7 +41,11 @@ class FPGA(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
   plic.node              := xbar.node
   uart.node              := TLWidthWidget(8)    := xbar.node
 
-  xbar.node := TLBuffer(abcde = BufferParams(depth = 2, flow = false, pipe = false)) := node
+  xbar.node := (TLBuffer(abcde = BufferParams(depth = 2, flow = false, pipe = false))
+    := TLFIFOFixer(TLFIFOFixer.all)
+    := TLAtomicAutomata()
+    := TLHintHandler()
+    := source.node)
 
   class IntSourceNodeToModule(val num: Int)(implicit p: Parameters) extends LazyModule {
     val sourceNode = IntSourceNode(IntSourcePortSimple(num, ports = 1, sources = 1))
@@ -57,7 +61,10 @@ class FPGA(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
   lazy val module = new LazyModuleImp(this) {
     val io = IO(new Bundle {
       val uart = new UARTIO
+      val tl   = Flipped(new ChipTLBundle)
     })
+
+    io.tl <> source.module.io.tl
 
     // sync external interrupts
     val ext_intrs = Wire(UInt(2.W))

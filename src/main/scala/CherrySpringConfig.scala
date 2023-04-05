@@ -54,6 +54,11 @@ trait HasCherrySpringsParameters {
   def ghrLen:           Int     = log2Up(phtSize)
   def coreTimerFreq:    Int     = p(CoreTimerFreq)
   def fpgaTimerFreq:    Int     = p(FpgaTimerFreq)
+  def tlAddressBits:    Int     = 32
+  def tlDataBits:       Int     = 64
+  def tlSourceBits:     Int     = 4
+  def tlSinkBits:       Int     = 4
+  def tlSizeBits:       Int     = 3
   def enablePCTrace:    Boolean = false
   def debugInstrFetch:  Boolean = false
   def debugInstrCommit: Boolean = false

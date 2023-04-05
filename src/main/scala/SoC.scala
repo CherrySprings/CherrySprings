@@ -10,7 +10,7 @@ class SoC(implicit p: Parameters) extends LazyModule {
   val dcache  = LazyModule(new DCache)
   val uncache = LazyModule(new UncacheCachePortToTileLinkBridge)
   val xbar    = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
-  val node    = TLIdentityNode()
+  val sink    = LazyModule(new TLSink)
 
   // interrupt sinks
   val clint_int_sink = IntSinkNode(IntSinkPortSimple(1, 2))
@@ -20,9 +20,14 @@ class SoC(implicit p: Parameters) extends LazyModule {
   xbar.node := icache.node // 0
   xbar.node := dcache.node // 1
   xbar.node := uncache.node // 2
-  node      := xbar.node
+  sink.node := xbar.node
 
   lazy val module = new LazyModuleImp(this) {
+    val io = IO(new Bundle {
+      val tl = new ChipTLBundle
+    })
+
+    io.tl <> sink.module.io.tl
 
     val core = Module(new Core)
 
