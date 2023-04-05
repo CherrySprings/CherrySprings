@@ -24,24 +24,34 @@ class CoreConfig
       case FpgaTimerFreq => 10 // suppose 100 MHz FPGA frequency => 10 MHz timer frequency
     })
 
-case object EnableDifftest extends Field[Boolean]
-case object EnableSerdes extends Field[Boolean]
+case object EnableDifftest extends Field[Boolean](false)
+case object EnableSerdes extends Field[Boolean](false)
 case object CoreTimerFreq extends Field[Int]
 case object FpgaTimerFreq extends Field[Int]
 
 class SystemConfig
     extends Config((site, here, up) => {
-      case EnableDifftest => true
-      case EnableSerdes   => false
-      case CoreTimerFreq  => 10 // suppose 100 MHz core frequency => 10 MHz timer frequency
-      case FpgaTimerFreq  => 10 // suppose 100 MHz FPGA frequency => 10 MHz timer frequency
+      case CoreTimerFreq => 10 // suppose 100 MHz core frequency => 10 MHz timer frequency
+      case FpgaTimerFreq => 10 // suppose 100 MHz FPGA frequency => 10 MHz timer frequency
     })
 
-class FastSimulationConfig extends Config(new CoreConfig ++ new SystemConfig)
+class EnableDifftestConfig
+    extends Config((site, here, up) => {
+      case EnableDifftest => true
+    })
 
-class SlowSimulationConfig extends Config(new CoreConfig ++ new SystemConfig)
+class EnableSerdesConfig
+    extends Config((site, here, up) => {
+      case EnableSerdes => true
+    })
 
-class SynthesisConfig extends Config(new CoreConfig ++ new SystemConfig ++ new WithoutTLMonitors)
+class FastSimulationConfig extends Config(new CoreConfig ++ new SystemConfig ++ new EnableDifftestConfig)
+
+class SlowSimulationConfig
+    extends Config(new CoreConfig ++ new SystemConfig ++ new EnableDifftestConfig ++ new EnableSerdesConfig)
+
+class SynthesisConfig
+    extends Config(new CoreConfig ++ new SystemConfig ++ new EnableSerdesConfig ++ new WithoutTLMonitors)
 
 trait HasCherrySpringsParameters {
   implicit val p: Parameters
