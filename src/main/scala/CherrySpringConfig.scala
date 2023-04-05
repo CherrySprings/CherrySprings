@@ -25,17 +25,23 @@ class CoreConfig
     })
 
 case object EnableDifftest extends Field[Boolean]
+case object EnableSerdes extends Field[Boolean]
 case object CoreTimerFreq extends Field[Int]
 case object FpgaTimerFreq extends Field[Int]
 
 class SystemConfig
     extends Config((site, here, up) => {
       case EnableDifftest => true
+      case EnableSerdes   => false
       case CoreTimerFreq  => 10 // suppose 100 MHz core frequency => 10 MHz timer frequency
       case FpgaTimerFreq  => 10 // suppose 100 MHz FPGA frequency => 10 MHz timer frequency
     })
 
-class CherrySpringsConfig extends Config(new CoreConfig ++ new SystemConfig)
+class FastSimulationConfig extends Config(new CoreConfig ++ new SystemConfig)
+
+class SlowSimulationConfig extends Config(new CoreConfig ++ new SystemConfig)
+
+class SynthesisConfig extends Config(new CoreConfig ++ new SystemConfig ++ new WithoutTLMonitors)
 
 trait HasCherrySpringsParameters {
   implicit val p: Parameters
@@ -54,7 +60,10 @@ trait HasCherrySpringsParameters {
   def ghrLen:           Int     = log2Up(phtSize)
   def coreTimerFreq:    Int     = p(CoreTimerFreq)
   def fpgaTimerFreq:    Int     = p(FpgaTimerFreq)
-  def enablePCTrace:    Boolean = false
+  def tlSourceBits:     Int     = 4
+  def tlSerWidth:       Int     = 8
+  def enableSerdes:     Boolean = p(EnableSerdes)
+  def debugPCTrace:     Boolean = false
   def debugInstrFetch:  Boolean = false
   def debugInstrCommit: Boolean = false
   def debugICache:      Boolean = false

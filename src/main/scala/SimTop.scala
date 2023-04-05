@@ -1,19 +1,23 @@
 import chisel3._
+import chisel3.util._
 import difftest._
 import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
 
-class SimTop(implicit p: Parameters) extends LazyModule with BindingScope {
+class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with HasCherrySpringsParameters {
   lazy val dts = DTS(bindingTree)
 
-  val soc  = LazyModule(new SoC)
-  val fpga = LazyModule(new FPGA)
+  val soc  = LazyModule(if (enableSerdes) (new SoC) else (new SoCImp))
+  val fpga = LazyModule(if (enableSerdes) (new FPGA) else (new FPGAImp))
 
-  fpga.node := soc.node
+  soc.clint_int := fpga.clint_int
+  soc.plic_int :*= fpga.plic_int
 
-  soc.clint_int_sink := fpga.clint.intnode
-  soc.plic_int_sink :*= fpga.plic.intnode
+  if (!enableSerdes) {
+    fpga.node.get := soc.node.get
+  }
 
   lazy val module = new LazyModuleImp(this) {
     ElaborationArtefacts.add("dts", dts)
@@ -25,5 +29,9 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope {
     })
 
     io.uart <> fpga.module.io.uart
+    if (enableSerdes) {
+      fpga.module.io.in.get  <> soc.module.io.out.get
+      fpga.module.io.out.get <> soc.module.io.in.get
+    }
   }
 }
