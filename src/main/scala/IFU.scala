@@ -19,7 +19,7 @@ class IF0(implicit p: Parameters) extends CherrySpringsModule {
   val pc_next_raw = Wire(UInt(xLen.W))
   if (enableBPU) {
     val bpu = Module(new BPU)
-    bpu.io.pc         := pc
+    bpu.io.pc         := Mux(io.jmp_packet.valid && io.req.fire, jmp_target, pc)
     bpu.io.jmp_packet := io.jmp_packet
     pc_next_raw       := bpu.io.out
   } else {
@@ -28,7 +28,7 @@ class IF0(implicit p: Parameters) extends CherrySpringsModule {
   io.bp_npc := pc_next_raw
 
   jmp_target := Cat(io.jmp_packet.target(xLen - 1, 2), 0.U(2.W))
-  pc_next    := Mux(io.jmp_packet.valid, jmp_target + Mux(io.req.fire, 4.U, 0.U), pc_next_raw)
+  pc_next    := Mux(io.jmp_packet.valid && !io.req.fire, jmp_target, pc_next_raw)
 
   io.req_addr      := Mux(io.jmp_packet.valid, jmp_target, pc)
   io.req.bits      := 0.U.asTypeOf(new CachePortReq)
