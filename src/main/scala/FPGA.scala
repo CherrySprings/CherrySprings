@@ -53,13 +53,13 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
   )
 
   // don't modify order of following nodes
-  mem.node               := TLDelayer(0.1)   := xbar.node
+  mem.node               := xbar.node
   rom.node               := xbar.node
   hart_id_allocator.node := xbar.node
   clint.node             := xbar.node
   plic.node              := xbar.node
-  uart.node              := TLWidthWidget(8) := xbar.node
-  xbar.node              := TLBuffer()       := TLFIFOFixer() := TLFragmenter(8, 32) := node.get
+  uart.node              := TLFIFOFixer() := TLFragmenter(4, 8) := TLWidthWidget(8)    := xbar.node
+  xbar.node              := TLBuffer()    := TLFIFOFixer()      := TLFragmenter(8, 32) := node.get
 
   class IntSourceNodeToModule(val num: Int)(implicit p: Parameters) extends LazyModule {
     val sourceNode = IntSourceNode(IntSourcePortSimple(num, ports = 1, sources = 1))
