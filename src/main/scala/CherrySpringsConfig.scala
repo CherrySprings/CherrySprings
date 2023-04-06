@@ -13,15 +13,13 @@ case object BTBSize extends Field[Int]
 
 class CoreConfig
     extends Config((site, here, up) => {
-      case HartID        => 0
-      case ResetPC       => BigInt("00010000", radix = 16)
-      case BootROMImage  => "./bootrom/bootrom.img"
-      case CacheNumSets  => 512 // 16 KB
-      case EnableBPU     => true
-      case PHTSize       => 512
-      case BTBSize       => 16
-      case CoreTimerFreq => 10 // suppose 100 MHz core frequency => 10 MHz timer frequency
-      case FpgaTimerFreq => 10 // suppose 100 MHz FPGA frequency => 10 MHz timer frequency
+      case HartID       => 0
+      case ResetPC      => BigInt("00010000", radix = 16)
+      case BootROMImage => "./bootrom/bootrom.img"
+      case CacheNumSets => 512 // 16 KB
+      case EnableBPU    => true
+      case PHTSize      => 512
+      case BTBSize      => 16
     })
 
 case object EnableDifftest extends Field[Boolean](false)
