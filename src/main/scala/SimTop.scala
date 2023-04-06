@@ -30,6 +30,15 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with H
 
     io.uart <> fpga.module.io.uart
     if (enableSerdes) {
+      val clock_divider = Module(new ClockDivider2)
+      val io_clock      = clock_divider.io.clk_out
+      clock_divider.io.clk_in := clock
+
+      soc.module.io.io_clock.get  := io_clock
+      soc.module.io.io_reset.get  := reset
+      fpga.module.io.io_clock.get := io_clock
+      fpga.module.io.io_reset.get := reset
+
       fpga.module.io.in.get  <> soc.module.io.out.get
       fpga.module.io.out.get <> soc.module.io.in.get
     }

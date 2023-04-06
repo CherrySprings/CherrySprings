@@ -6,6 +6,7 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.devices.tilelink._
 import freechips.rocketchip.interrupts._
+import freechips.rocketchip.util._
 import java.nio._
 import java.nio.file._
 import testchipip._
@@ -19,9 +20,11 @@ abstract class FPGAAbstract(implicit p: Parameters) extends LazyModule with HasC
 
 class FPGAAbstractImp[+L <: FPGAAbstract](l: L) extends LazyModuleImp(l) with HasCherrySpringsParameters {
   val io = IO(new Bundle {
-    val uart = new UARTIO
-    val in   = if (enableSerdes) Some(Flipped(Decoupled(UInt(tlSerWidth.W)))) else None
-    val out  = if (enableSerdes) Some(Decoupled(UInt(tlSerWidth.W))) else None
+    val uart     = new UARTIO
+    val in       = if (enableSerdes) Some(Flipped(Decoupled(UInt(tlSerWidth.W)))) else None
+    val out      = if (enableSerdes) Some(Decoupled(UInt(tlSerWidth.W))) else None
+    val io_clock = if (enableSerdes) Some(Input(Clock())) else None
+    val io_reset = if (enableSerdes) Some(Input(Bool())) else None
   })
 }
 
@@ -127,8 +130,21 @@ class FPGA(implicit p: Parameters) extends FPGAAbstract {
     val wordsPerBeat  = (mergeType.getWidth - 1) / tlSerWidth + 1
     val beatsPerBlock = 4
     val qDepth        = (wordsPerBeat * beatsPerBlock) << tlSourceBits
-    desser.module.io.ser.head.in <> Queue(io.in.get, qDepth)
-    io.out.get                   <> Queue(desser.module.io.ser.head.out, qDepth)
+
+    val in_fifo  = Module(new AsyncQueue(UInt(tlSerWidth.W)))
+    val out_fifo = Module(new AsyncQueue(UInt(tlSerWidth.W)))
+    in_fifo.io.enq               <> io.in.get
+    in_fifo.io.enq_clock         := io.io_clock.get
+    in_fifo.io.enq_reset         := io.io_reset.get
+    desser.module.io.ser.head.in <> Queue(in_fifo.io.deq, qDepth)
+    in_fifo.io.deq_clock         := clock
+    in_fifo.io.deq_reset         := reset
+    out_fifo.io.enq              <> Queue(desser.module.io.ser.head.out, qDepth)
+    out_fifo.io.enq_clock        := clock
+    out_fifo.io.enq_reset        := reset
+    out_fifo.io.deq              <> io.out.get
+    out_fifo.io.deq_clock        := io.io_clock.get
+    out_fifo.io.deq_reset        := io.io_reset.get
 
     // UART
     io.uart <> fpga_imp.module.io.uart

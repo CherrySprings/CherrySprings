@@ -5,6 +5,7 @@ import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
+import freechips.rocketchip.util._
 import testchipip._
 
 abstract class SoCAbstract(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
@@ -16,8 +17,10 @@ abstract class SoCAbstract(implicit p: Parameters) extends LazyModule with HasCh
 
 class SoCAbstractImp[+L <: SoCAbstract](l: L) extends LazyModuleImp(l) with HasCherrySpringsParameters {
   val io = IO(new Bundle {
-    val in  = if (enableSerdes) Some(Flipped(Decoupled(UInt(tlSerWidth.W)))) else None
-    val out = if (enableSerdes) Some(Decoupled(UInt(tlSerWidth.W))) else None
+    val in       = if (enableSerdes) Some(Flipped(Decoupled(UInt(tlSerWidth.W)))) else None
+    val out      = if (enableSerdes) Some(Decoupled(UInt(tlSerWidth.W))) else None
+    val io_clock = if (enableSerdes) Some(Input(Clock())) else None
+    val io_reset = if (enableSerdes) Some(Input(Bool())) else None
   })
 }
 
@@ -108,7 +111,19 @@ class SoC(implicit p: Parameters) extends SoCAbstract {
   serdes.node := TLBuffer() := soc_imp.node.get
 
   override lazy val module = new SoCAbstractImp(this) {
-    io.in.get  <> serdes.module.io.ser.head.in
-    io.out.get <> serdes.module.io.ser.head.out
+    val in_fifo  = Module(new AsyncQueue(UInt(tlSerWidth.W)))
+    val out_fifo = Module(new AsyncQueue(UInt(tlSerWidth.W)))
+    in_fifo.io.enq        <> io.in.get
+    in_fifo.io.enq_clock  := io.io_clock.get
+    in_fifo.io.enq_reset  := io.io_reset.get
+    in_fifo.io.deq        <> serdes.module.io.ser.head.in
+    in_fifo.io.deq_clock  := clock
+    in_fifo.io.deq_reset  := reset
+    out_fifo.io.enq       <> serdes.module.io.ser.head.out
+    out_fifo.io.enq_clock := clock
+    out_fifo.io.enq_reset := reset
+    out_fifo.io.deq       <> io.out.get
+    out_fifo.io.deq_clock := io.io_clock.get
+    out_fifo.io.deq_reset := io.io_reset.get
   }
 }
