@@ -1,6 +1,5 @@
 import chisel3._
 import chisel3.util._
-import chisel3.util.experimental._
 import chipsalliance.rocketchip.config._
 import Constant._
 import difftest._
@@ -321,11 +320,10 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     diff_wb.io.data   := ex_wb.io.out.rd_data
 
     val trap  = (commit_uop.instr === HALT()) && commit_uop.valid
-    val rf_a0 = WireInit(0.U(xLen.W))
-    BoringUtils.addSink(rf_a0, "rf_a0")
+    val rf_a0 = rf.io.rf_a0
 
     when(commit_uop.instr === PUTCH() && commit_uop.valid) {
-      printf("%c", rf_a0(7, 0))
+      printf("%c", rf_a0)
     }
 
     val diff_te = Module(new DifftestTrapEvent)
