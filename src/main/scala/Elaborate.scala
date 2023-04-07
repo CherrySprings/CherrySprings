@@ -15,4 +15,5 @@ object Elaborate extends App with HasRocketChipStageUtils {
   val top     = LazyModule(new SimTop())
   val verilog = chisel3.stage.ChiselStage.emitVerilog(top.module)
   writeOutputFile(".", "SimTop.v", verilog)
+  writeOutputFile(".", "cs.graphml", top.graphML)
 }

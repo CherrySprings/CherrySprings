@@ -8,6 +8,7 @@ verilog: $(SRC)
 	sbt "run $(TARGET) -td $(BUILD_DIR)"
 	@mv *.v $(BUILD_DIR)
 	@mv firrtl_black_box_resource_files.f $(BUILD_DIR)
+	@mv *.graphml $(BUILD_DIR)
 
 emu: verilog
 	cd difftest && $(MAKE) $(EMU_FLAGS) emu -j
