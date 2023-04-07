@@ -335,7 +335,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        mhartid
    * Description: Hardware thread ID
    */
-  val mhartid          = RegInit(0.U(xLen.W))
+  val mhartid          = RegInit(hartID.U(xLen.W))
   val mhartid_writable = RegInit(true.B)
   when(io.rw.addr === CSRs.mhartid.U) {
     rdata := mhartid
