@@ -35,7 +35,7 @@ lazy val rocketMacros = (project in file("rocket-chip/macros"))
 lazy val rocketchip = (Project("rocket-chip", file("rocket-chip/src")))
   .settings(commonSettings, chiselSettings)
   .settings(
-    Compile / scalaSource := baseDirectory.value / "main" / "scala",
+    Compile / scalaSource       := baseDirectory.value / "main" / "scala",
     Compile / resourceDirectory := baseDirectory.value / "main" / "resources"
   )
   .dependsOn(`api-config-chipsalliance`)
@@ -45,7 +45,13 @@ lazy val rocketchip = (Project("rocket-chip", file("rocket-chip/src")))
 lazy val difftest = (project in file("difftest"))
   .settings(commonSettings, chiselSettings)
 
-lazy val cherrysprings = project.in(file("."))
+lazy val huancun = (project in file("HuanCun"))
+  .settings(commonSettings, chiselSettings)
+  .dependsOn(rocketchip)
+
+lazy val cherrysprings = project
+  .in(file("."))
   .settings(commonSettings, chiselSettings)
   .dependsOn(rocketchip)
   .dependsOn(difftest)
+  .dependsOn(huancun)

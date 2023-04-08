@@ -4,3 +4,6 @@
 [submodule "difftest"]
 	path = difftest
 	url = https://github.com/OpenXiangShan/difftest.git
+[submodule "HuanCun"]
+	path = HuanCun
+	url = https://github.com/OpenXiangShan/HuanCun.git
