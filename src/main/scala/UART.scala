@@ -18,7 +18,8 @@ class UART(implicit p: Parameters) extends LazyModule with HasCherrySpringsParam
             regionType         = RegionType.UNCACHED,
             supportsGet        = TransferSizes(1, beatBytes),
             supportsPutFull    = TransferSizes(1, beatBytes),
-            supportsPutPartial = TransferSizes(1, beatBytes)
+            supportsPutPartial = TransferSizes(1, beatBytes),
+            fifoId             = Some(0)
           )
         ),
         beatBytes = beatBytes
