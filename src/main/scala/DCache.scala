@@ -14,9 +14,9 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
           TLMasterParameters.v1(
             name            = s"DataCache",
             sourceId        = IdRange(0, sourceRange),
-            supportsProbe   = TransferSizes(xLen),
-            supportsGet     = TransferSizes(xLen),
-            supportsPutFull = TransferSizes(xLen)
+            supportsProbe   = TransferSizes(256),
+            supportsGet     = TransferSizes(256),
+            supportsPutFull = TransferSizes(256)
           )
         )
       )
@@ -96,18 +96,6 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       req_r := req.bits
     }
 
-    // cacheline burst transfer
-    val get_count    = RegInit(0.U(2.W))
-    val get_complete = tl.d.fire && (get_count === 3.U)
-    when((state === s_get_resp) && tl.d.fire) {
-      get_count := get_count + 1.U
-    }
-    val put_count    = RegInit(0.U(2.W))
-    val put_complete = tl.a.fire && (put_count === 3.U)
-    when(((state === s_put_req) || (state_fi === s_fi_put_req)) && tl.a.fire) {
-      put_count := put_count + 1.U
-    }
-
     switch(state) {
       is(s_init) {
         when(req.fire) {
@@ -118,7 +106,7 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
         state := Mux(resp.fire, s_init, Mux(array_hit, s_check, Mux(array_dirty, s_put_req, s_get_req)))
       }
       is(s_put_req) {
-        when(put_complete) {
+        when(tl.a.fire) {
           state := s_put_resp
         }
       }
@@ -133,7 +121,7 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
         }
       }
       is(s_get_resp) {
-        when(get_complete) {
+        when(tl.d.fire) {
           state := s_ok
         }
       }
@@ -160,21 +148,15 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     )
 
     // cache write
-    val wdata0 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (get_count === 0.U))
-    val wdata1 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (get_count === 1.U))
-    val wdata2 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (get_count === 2.U))
-    val wdata3 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (get_count === 3.U))
+    val wdata = RegEnable(tl.d.bits.data, 0.U(256.W), tl.d.fire)
 
-    val refill_data_256_orig = Cat(tl.d.bits.data, wdata2, wdata1, wdata0)
-    val refill_data_256      = Wire(UInt(256.W))
-
-    refill_data_256 := Mux(
+    val refill_data_256 = Mux(
       req_r.wen,
-      MaskData(refill_data_256_orig, req_wdata_256, req_wmask_256),
-      refill_data_256_orig
+      MaskData(tl.d.bits.data, req_wdata_256, req_wmask_256),
+      tl.d.bits.data
     )
 
-    when((state === s_get_resp) && get_complete) {
+    when((state === s_get_resp) && tl.d.fire) {
       array_wdata.data            := refill_data_256
       array.io.wen                := true.B
       valid(getIndex(req_r.addr)) := true.B
@@ -185,27 +167,18 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       getOffset(req_r.addr),
       0.U(64.W),
       Array(
-        0.U -> wdata0,
-        1.U -> wdata1,
-        2.U -> wdata2,
-        3.U -> wdata3
+        0.U -> wdata(63, 0),
+        1.U -> wdata(127, 64),
+        2.U -> wdata(191, 128),
+        3.U -> wdata(255, 192)
       )
     )
 
     // dirty addr & data to be written back to memory
     val dirty_addr = Wire(UInt(paddrLen.W))
-    val dirty_data = Wire(UInt(64.W))
+    val dirty_data = Wire(UInt(256.W))
     dirty_addr := Cat(array_out.tag, RegNext(array.io.addr), 0.U(5.W))
-    dirty_data := MuxLookup(
-      put_count,
-      0.U,
-      Array(
-        0.U -> array_out.data(63, 0),
-        1.U -> array_out.data(127, 64),
-        2.U -> array_out.data(191, 128),
-        3.U -> array_out.data(255, 192)
-      )
-    )
+    dirty_data := array_out.data
 
     // fence.i
     io.fence_i_ok := (state_fi === s_fi_ok)
@@ -225,7 +198,7 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
         state_fi := Mux(valid(fi_check_addr) && dirty(fi_check_addr), s_fi_put_req, s_fi_next)
       }
       is(s_fi_put_req) {
-        when(put_complete) {
+        when(tl.a.fire) {
           state_fi := s_fi_put_resp
         }
       }
@@ -247,7 +220,7 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     }
 
     // send TL burst read request
-    val source        = Counter(Mux(state === s_get_req, tl.a.fire, put_complete), sourceRange)._1
+    val source        = Counter(tl.a.fire, sourceRange)._1
     val (_, get_bits) = edge.Get(source, Cat(req_r.addr(paddrLen - 1, 5), Fill(5, 0.U)), 5.U)
     val (_, put_bits) = edge.Put(source, dirty_addr, 5.U, dirty_data)
 

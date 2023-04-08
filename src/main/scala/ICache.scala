@@ -73,12 +73,6 @@ class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     val s_check :: s_req :: s_resp :: s_ok :: s_init :: Nil = Enum(5)
     val state                                               = RegInit(s_init)
 
-    // refill cacheline
-    val refill_count = RegInit(0.U(2.W)) // saturation counter (0 -> 1 -> 2 -> 3 -> 0)
-    when(tl.d.fire) {
-      refill_count := refill_count + 1.U
-    }
-
     switch(state) {
       is(s_check) {
         state := Mux(resp.fire && !req.fire, s_init, Mux(array_hit, s_check, s_req))
@@ -89,12 +83,14 @@ class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
         }
       }
       is(s_resp) {
-        when(tl.d.fire && refill_count === 3.U) {
+        when(tl.d.fire) {
           state := s_ok
         }
       }
       is(s_ok) {
-        state := Mux(resp.fire && !req.fire, s_init, s_check)
+        when(resp.fire) {
+          state := Mux(!req.fire, s_init, s_check)
+        }
       }
       is(s_init) {
         when(req.fire) {
@@ -119,14 +115,11 @@ class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     )
 
     // cache write
-    val wdata0 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 0.U))
-    val wdata1 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 1.U))
-    val wdata2 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 2.U))
-    val wdata3 = RegEnable(tl.d.bits.data, 0.U(64.W), tl.d.fire && (refill_count === 3.U))
+    val wdata = RegEnable(tl.d.bits.data, 0.U(256.W), tl.d.fire)
 
-    when(tl.d.fire && (refill_count === 3.U)) {
+    when(tl.d.fire) {
       array.io.addr               := getIndex(req_r.addr)
-      array.io.wdata              := Cat(getTag(req_r.addr), tl.d.bits.data, wdata2, wdata1, wdata0)
+      array.io.wdata              := Cat(getTag(req_r.addr), tl.d.bits.data)
       array.io.wen                := true.B
       valid(getIndex(req_r.addr)) := true.B
     }
@@ -135,10 +128,10 @@ class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       getOffset(req_r.addr),
       0.U(64.W),
       Array(
-        0.U -> wdata0,
-        1.U -> wdata1,
-        2.U -> wdata2,
-        3.U -> wdata3
+        0.U -> wdata(63, 0),
+        1.U -> wdata(127, 64),
+        2.U -> wdata(191, 128),
+        3.U -> wdata(255, 192)
       )
     )
 
@@ -146,7 +139,7 @@ class ICache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     s2_ready := ((state === s_check && array_hit) || (state === s_ok) || (state === s_init)) && resp.ready
     s1_valid := req.valid
 
-    // send TL burst read request
+    // send TL read request
     val source        = Counter(tl.a.fire, sourceRange)._1 // source id
     val (_, get_bits) = edge.Get(source, Cat(req_r.addr(paddrLen - 1, 5), Fill(5, 0.U)), 5.U) // 4x64 bits
 

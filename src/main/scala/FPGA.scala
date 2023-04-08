@@ -10,6 +10,7 @@ import freechips.rocketchip.util._
 import java.nio._
 import java.nio.file._
 import testchipip._
+import huancun._
 
 abstract class FPGAAbstract(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   val clint_int: Seq[IntIdentityNode]
@@ -30,11 +31,13 @@ class FPGAAbstractImp[+L <: FPGAAbstract](l: L) extends LazyModuleImp(l) with Ha
 
 class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
   val xbar              = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
+  val pbar              = LazyModule(new TLXbar)
   val hart_id_allocator = LazyModule(new HartIDAllocator)
   val clint             = LazyModule(new CLINT(CLINTParams(), 8))
   val plic              = LazyModule(new TLPLIC(PLICParams(), 8))
   val uart              = LazyModule(new UART)
-  val mem               = LazyModule(new TLVirtualRam)
+  val mem               = LazyModule(new TLVirtualRam256)
+  val l2cache           = LazyModule(new HuanCun)
   val node = Some(for (i <- 0 until numHarts) yield {
     val node = TLIdentityNode()
     node
@@ -56,15 +59,17 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
   )
 
   // don't modify order of following nodes
-  mem.node               := xbar.node
-  rom.node               := xbar.node
-  hart_id_allocator.node := xbar.node
-  clint.node             := xbar.node
-  plic.node              := xbar.node
-  uart.node              := TLFIFOFixer() := TLFragmenter(4, 8) := TLWidthWidget(8) := xbar.node
+  mem.node  := TLFragmenter(32, 64) := TLCacheCork()       := l2cache.node      := xbar.node
+  pbar.node := TLFIFOFixer()        := TLFragmenter(8, 32) := TLWidthWidget(32) := xbar.node
+
+  rom.node               := pbar.node
+  hart_id_allocator.node := pbar.node
+  clint.node             := pbar.node
+  plic.node              := pbar.node
+  uart.node              := TLFragmenter(4, 8) := TLWidthWidget(8) := pbar.node
 
   for (i <- 0 until numHarts) {
-    xbar.node := TLBuffer() := TLFIFOFixer() := TLFragmenter(8, 32) := node.get(i)
+    xbar.node := TLBuffer() := node.get(i)
   }
 
   class IntSourceNodeToModule(val num: Int)(implicit p: Parameters) extends LazyModule {
