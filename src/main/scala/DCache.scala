@@ -12,11 +12,9 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       TLMasterPortParameters.v1(
         clients = Seq(
           TLMasterParameters.v1(
-            name            = s"DataCache",
-            sourceId        = IdRange(0, sourceRange),
-            supportsProbe   = TransferSizes(256),
-            supportsGet     = TransferSizes(256),
-            supportsPutFull = TransferSizes(256)
+            name          = s"DataCache",
+            sourceId      = IdRange(0, sourceRange),
+            supportsProbe = TransferSizes(32)
           )
         )
       )
@@ -53,12 +51,12 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
     val dirty = RegInit(VecInit(Seq.fill(cacheNumSets)(false.B)))
 
     // FSM
-    val s_init :: s_check :: s_put_req :: s_put_resp :: s_get_req :: s_get_resp :: s_ok :: Nil = Enum(7)
-    val state                                                                                  = RegInit(s_init)
+    val s_init :: s_check :: s_release :: s_release_ack :: s_acquire :: s_grant :: s_grant_ack :: s_ok :: Nil = Enum(8)
+    val state                                                                                                 = RegInit(s_init)
 
     // FSM for fence.i
-    val s_fi_init :: s_fi_next :: s_fi_check :: s_fi_put_req :: s_fi_put_resp :: s_fi_ok :: Nil = Enum(6)
-    val state_fi                                                                                = RegInit(s_fi_init)
+    val s_fi_init :: s_fi_next :: s_fi_check :: s_fi_release :: s_fi_release_ack :: s_fi_ok :: Nil = Enum(6)
+    val state_fi                                                                                   = RegInit(s_fi_init)
 
     // write data & mask expanded to 256 bits from input request
     val req_wdata_256 = Wire(UInt(256.W))
@@ -96,6 +94,11 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       req_r := req.bits
     }
 
+    val tl_d_bits_r = RegInit(0.U.asTypeOf(tl.d.bits))
+    when(tl.d.fire) {
+      tl_d_bits_r := tl.d.bits
+    }
+
     switch(state) {
       is(s_init) {
         when(req.fire) {
@@ -103,25 +106,30 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
         }
       }
       is(s_check) {
-        state := Mux(resp.fire, s_init, Mux(array_hit, s_check, Mux(array_dirty, s_put_req, s_get_req)))
+        state := Mux(resp.fire, s_init, Mux(array_hit, s_check, Mux(array_dirty, s_release, s_acquire)))
       }
-      is(s_put_req) {
-        when(tl.a.fire) {
-          state := s_put_resp
+      is(s_release) {
+        when(tl.c.fire) {
+          state := s_release_ack
         }
       }
-      is(s_put_resp) {
+      is(s_release_ack) {
         when(tl.d.fire) {
-          state := s_get_req
+          state := s_acquire
         }
       }
-      is(s_get_req) {
+      is(s_acquire) {
         when(tl.a.fire) {
-          state := s_get_resp
+          state := s_grant
         }
       }
-      is(s_get_resp) {
+      is(s_grant) {
         when(tl.d.fire) {
+          state := s_grant_ack
+        }
+      }
+      is(s_grant_ack) {
+        when(tl.e.fire) {
           state := s_ok
         }
       }
@@ -156,7 +164,7 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       tl.d.bits.data
     )
 
-    when((state === s_get_resp) && tl.d.fire) {
+    when((state === s_grant) && tl.d.fire) {
       array_wdata.data            := refill_data_256
       array.io.wen                := true.B
       valid(getIndex(req_r.addr)) := true.B
@@ -195,14 +203,14 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
         }
       }
       is(s_fi_check) {
-        state_fi := Mux(valid(fi_check_addr) && dirty(fi_check_addr), s_fi_put_req, s_fi_next)
+        state_fi := Mux(valid(fi_check_addr) && dirty(fi_check_addr), s_fi_release, s_fi_next)
       }
-      is(s_fi_put_req) {
-        when(tl.a.fire) {
-          state_fi := s_fi_put_resp
+      is(s_fi_release) {
+        when(tl.c.fire) {
+          state_fi := s_fi_release_ack
         }
       }
-      is(s_fi_put_resp) {
+      is(s_fi_release_ack) {
         when(tl.d.fire) {
           state_fi := s_fi_next
         }
@@ -214,19 +222,27 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       is(s_fi_ok) {
         for (i <- 0 until cacheNumSets) {
           dirty(i) := false.B
+          valid(i) := false.B
         }
         state_fi := s_fi_init
       }
     }
 
-    // send TL burst read request
-    val source        = Counter(tl.a.fire, sourceRange)._1
-    val (_, get_bits) = edge.Get(source, Cat(req_r.addr(paddrLen - 1, 5), Fill(5, 0.U)), 5.U)
-    val (_, put_bits) = edge.Put(source, dirty_addr, 5.U, dirty_data)
+    val req_addr_aligned = Cat(req_r.addr(paddrLen - 1, 5), Fill(5, 0.U))
 
-    tl.a.bits  := Mux(state === s_get_req, get_bits, put_bits)
-    tl.a.valid := (state === s_put_req) || (state === s_get_req) || (state_fi === s_fi_put_req)
-    tl.d.ready := (state === s_put_resp) || (state === s_get_resp) || (state_fi === s_fi_put_resp)
+    // send TL burst read request
+    val source            = Counter(tl.a.fire, sourceRange)._1
+    val (_, acquire_bits) = edge.AcquireBlock(source, req_addr_aligned, 5.U, TLPermissions.NtoT)
+    val (_, release_bits) = edge.Release(source, dirty_addr, 5.U, TLPermissions.TtoN, dirty_data)
+    val grant_ack_bits    = edge.GrantAck(tl_d_bits_r)
+
+    tl.a.bits  := acquire_bits
+    tl.a.valid := (state === s_acquire)
+    tl.c.bits  := release_bits
+    tl.c.valid := (state === s_release) || (state_fi === s_fi_release)
+    tl.d.ready := (state === s_release_ack) || (state === s_grant) || (state_fi === s_fi_release_ack)
+    tl.e.bits  := grant_ack_bits
+    tl.e.valid := (state === s_grant_ack)
 
     // cache port handshake
     req.ready       := (state === s_init) && !io.fence_i && (state_fi === s_fi_init)
@@ -244,7 +260,7 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
       when(tl.a.fire) {
         printf(
           cf"${DebugTimer()} [DCache] [out-req ] addr=${tl.a.bits.address}%x " +
-            cf"wdata=${tl.a.bits.data}%x wmask=${tl.a.bits.mask}%x wen=${!(state === s_get_req)}\n"
+            cf"wdata=${tl.a.bits.data}%x wmask=${tl.a.bits.mask}%x wen=${!(state === s_acquire)}\n"
         )
       }
       when(tl.d.fire) {
