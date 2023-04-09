@@ -1,9 +1,9 @@
 import chisel3._
 import chisel3.util._
-import Constant._
-import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
+import org.chipsalliance.cde.config._
+import Constant._
 
 class VirtualRam(implicit p: Parameters) extends BlackBox with HasBlackBoxResource {
   val io = IO(new Bundle {
@@ -53,7 +53,7 @@ class TLVirtualRam(implicit p: Parameters) extends LazyModule with HasCherrySpri
 
     val put_count = RegInit(0.U(2.W))
     val get_count = RegInit(0.U(2.W))
-    val count_max = MuxLookup(req.size, 0.U, Array(3.U -> 0.U, 4.U -> 1.U, 5.U -> 3.U))
+    val count_max = MuxLookup(req.size, 0.U, Seq(3.U -> 0.U, 4.U -> 1.U, 5.U -> 3.U))
 
     switch(state) {
       is(s_req) {

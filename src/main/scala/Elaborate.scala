@@ -1,6 +1,6 @@
-import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy.LazyModule
 import freechips.rocketchip.util.HasRocketChipStageUtils
+import org.chipsalliance.cde.config._
 
 object Elaborate extends App with HasRocketChipStageUtils {
   val target = args(0)

@@ -1,10 +1,9 @@
 import chisel3._
 import chisel3.util._
-import Constant._
-import chipsalliance.rocketchip.config._
 import difftest._
-import freechips.rocketchip.rocket.Causes
-import freechips.rocketchip.rocket.CSRs
+import freechips.rocketchip.rocket._
+import org.chipsalliance.cde.config._
+import Constant._
 
 object PRV {
   val U = 0
@@ -57,7 +56,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   wdata := MuxLookup(
     io.rw.cmd,
     0.U,
-    Array(
+    Seq(
       s"b$CSR_RW".U -> io.rw.wdata,
       s"b$CSR_RS".U -> (rdata | io.rw.wdata),
       s"b$CSR_RC".U -> (rdata & ~io.rw.wdata)
@@ -734,7 +733,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
       io.lsu_exc_code,
       Mux(is_exc_from_csr || is_exc_from_sys, Causes.illegal_instruction.U, 0.U)
     ),
-    Array(
+    Seq(
       s"b$EXC_IAM".U -> Causes.misaligned_fetch.U,
       s"b$EXC_IAF".U -> Causes.fetch_access.U,
       s"b$EXC_II".U  -> Causes.illegal_instruction.U,

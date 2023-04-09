@@ -1,7 +1,7 @@
 import chisel3._
 import chisel3.util._
-import chipsalliance.rocketchip.config._
 import chisel3.util.random._
+import org.chipsalliance.cde.config._
 
 class BTBEntry(implicit p: Parameters) extends CherrySpringsBundle {
   val tag    = UInt((vaddrLen - 2).W)
@@ -55,7 +55,7 @@ class BPU(implicit p: Parameters) extends CherrySpringsModule {
     pht(pht_widx) := MuxLookup(
       pht(pht_widx),
       pht_default_state,
-      Array(
+      Seq(
         0.U -> Mux(io.jmp_packet.bp_taken, 1.U, 0.U), // strongly not taken
         1.U -> Mux(io.jmp_packet.bp_taken, 2.U, 0.U), // weakly not taken
         2.U -> Mux(io.jmp_packet.bp_taken, 3.U, 1.U), // weakly taken

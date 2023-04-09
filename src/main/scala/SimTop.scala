@@ -1,10 +1,10 @@
 import chisel3._
 import chisel3.util._
 import difftest._
-import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.util._
+import org.chipsalliance.cde.config._
 
 class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with HasCherrySpringsParameters {
   lazy val dts = DTS(bindingTree)

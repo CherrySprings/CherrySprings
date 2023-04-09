@@ -1,7 +1,7 @@
 import chisel3._
 import chisel3.util._
+import org.chipsalliance.cde.config._
 import Constant._
-import chipsalliance.rocketchip.config._
 
 class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameters {
   def isLeaf(p: Sv39PTE) = p.flag.r || p.flag.x
@@ -98,15 +98,15 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   val l0_addr = Wire(UInt(paddrLen.W))
 
   l2_addr := Cat(io.satp_ppn, in_vaddr.vpn2, 0.U(3.W))
-  l1_addr := Cat(ptw_pte_reg.ppn, in_vaddr.vpn1, 0.U(3.W))
-  l0_addr := Cat(ptw_pte_reg.ppn, in_vaddr.vpn0, 0.U(3.W))
+  l1_addr := Cat(ptw_pte_reg.ppn(), in_vaddr.vpn1, 0.U(3.W))
+  l0_addr := Cat(ptw_pte_reg.ppn(), in_vaddr.vpn0, 0.U(3.W))
 
   // ptw memory access port
   io.ptw.req.bits := 0.U.asTypeOf(new CachePortReq)
   io.ptw.req.bits.addr := MuxLookup(
     ptw_level,
     0.U,
-    Array(
+    Seq(
       2.U -> l2_addr,
       1.U -> l1_addr,
       0.U -> l0_addr

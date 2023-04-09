@@ -1,8 +1,8 @@
 import chisel3._
 import chisel3.util._
-import Constant._
-import chipsalliance.rocketchip.config._
 import chisel3.util.random._
+import org.chipsalliance.cde.config._
+import Constant._
 
 case object IsITLB extends Field[Boolean]
 case object IsDTLB extends Field[Boolean]
@@ -65,7 +65,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   val hit4kb         = WireDefault(false.B)
   // read
   for (i <- 0 until tlb4kb_size) {
-    when(array4kb_valid(i) && (array4kb(i).vpn === io.vaddr.vpn)) {
+    when(array4kb_valid(i) && (array4kb(i).vpn() === io.vaddr.vpn())) {
       hit4kb         := true.B
       array4kb_rdata := array4kb(i)
     }
@@ -98,7 +98,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   val hit2mb         = Wire(Bool())
   // read, index by lower bits of vaddr vpn1
   array2mb_rdata := array2mb(io.vaddr.vpn1)
-  hit2mb         := array2mb_valid(io.vaddr.vpn1) && (array2mb_rdata.vpn2mb === io.vaddr.vpn2mb)
+  hit2mb         := array2mb_valid(io.vaddr.vpn1) && (array2mb_rdata.vpn2mb() === io.vaddr.vpn2mb())
   // set wdata
   array2mb_wdata.flag := io.wpte.flag
   array2mb_wdata.vpn2 := io.wvaddr.vpn2
@@ -126,7 +126,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   val hit1gb         = Wire(Bool())
   // read, index by lower bits of vaddr vpn2
   array1gb_rdata := array1gb(io.vaddr.vpn2)
-  hit1gb         := array1gb_valid(io.vaddr.vpn2) && (array1gb_rdata.vpn1gb === io.vaddr.vpn1gb)
+  hit1gb         := array1gb_valid(io.vaddr.vpn2) && (array1gb_rdata.vpn1gb() === io.vaddr.vpn1gb())
   // set wdata
   array1gb_wdata.flag := io.wpte.flag
   array1gb_wdata.vpn2 := io.wvaddr.vpn2

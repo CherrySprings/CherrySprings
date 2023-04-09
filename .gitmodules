@@ -4,6 +4,6 @@
 [submodule "difftest"]
 	path = difftest
 	url = https://github.com/OpenXiangShan/difftest.git
-[submodule "HuanCun"]
-	path = HuanCun
-	url = https://github.com/OpenXiangShan/HuanCun.git
+[submodule "rocket-chip-inclusive-cache"]
+	path = rocket-chip-inclusive-cache
+	url = https://github.com/chipsalliance/rocket-chip-inclusive-cache.git

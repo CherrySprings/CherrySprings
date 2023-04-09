@@ -1,7 +1,7 @@
 import chisel3._
 import chisel3.util._
+import org.chipsalliance.cde.config._
 import Constant._
-import chipsalliance.rocketchip.config._
 
 class MicroOp(implicit p: Parameters) extends CherrySpringsBundle {
   val valid = Bool()
@@ -70,7 +70,7 @@ class MicroOp(implicit p: Parameters) extends CherrySpringsBundle {
     imm := MuxLookup(
       imm_type,
       0.U(32.W),
-      Array(
+      Seq(
         s"b$IMM_I".U -> imm_i,
         s"b$IMM_S".U -> imm_s,
         s"b$IMM_B".U -> imm_b,

@@ -1,9 +1,9 @@
 import chisel3._
 import chisel3.util._
-import chipsalliance.rocketchip.config._
-import Constant._
 import difftest._
-import freechips.rocketchip.rocket._
+import freechips.rocketchip.rocket.CSRs
+import org.chipsalliance.cde.config._
+import Constant._
 
 class Core(implicit p: Parameters) extends CherrySpringsModule {
   val io = IO(new Bundle {
@@ -99,7 +99,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   alu_jmp_packet.bp_taken := MuxLookup(
     alu.io.uop.jmp_op,
     false.B,
-    Array(
+    Seq(
       s"b$JMP_BR".U   -> alu.io.cmp_out,
       s"b$JMP_JAL".U  -> true.B,
       s"b$JMP_JALR".U -> true.B
@@ -192,7 +192,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   ex_wb.io.in.rd_data := MuxLookup(
     id_ex.io.out.uop.fu,
     alu_br_out,
-    Array(
+    Seq(
       s"b$FU_LSU".U -> lsu.io.rdata,
       s"b$FU_MDU".U -> mdu.io.out,
       s"b$FU_CSR".U -> csr.io.rw.rdata
@@ -226,7 +226,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     id_rs1_data := MuxLookup(
       decode.io.out.rs1_src,
       0.U,
-      Array(
+      Seq(
         s"b$RS_PC".U  -> ZeroExt32_64(instr_buffer.io.deq.bits.pc),
         s"b$RS_RF".U  -> rf.io.rs1_data,
         s"b$RS_IMM".U -> SignExt32_64(decode.io.out.imm)
@@ -244,7 +244,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     id_rs2_data := MuxLookup(
       decode.io.out.rs2_src,
       0.U,
-      Array(
+      Seq(
         s"b$RS_PC".U  -> ZeroExt32_64(instr_buffer.io.deq.bits.pc),
         s"b$RS_RF".U  -> rf.io.rs2_data,
         s"b$RS_IMM".U -> SignExt32_64(decode.io.out.imm)

@@ -1,7 +1,6 @@
 import chisel3._
 import chisel3.util._
 import difftest._
-import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.devices.tilelink._
@@ -9,8 +8,8 @@ import freechips.rocketchip.interrupts._
 import freechips.rocketchip.util._
 import java.nio._
 import java.nio.file._
+import org.chipsalliance.cde.config._
 import testchipip._
-import huancun._
 
 abstract class FPGAAbstract(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   val clint_int: Seq[IntIdentityNode]
@@ -37,7 +36,7 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
   val plic              = LazyModule(new TLPLIC(PLICParams(), 8))
   val uart              = LazyModule(new UART)
   val mem               = LazyModule(new TLVirtualRam256)
-  val l2cache           = LazyModule(new HuanCun)
+
   val node = Some(for (i <- 0 until numHarts) yield {
     val node = TLIdentityNode()
     node
@@ -58,9 +57,23 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
     )
   )
 
+  // val l2cache = LazyModule(
+  //   new InclusiveCache(
+  //     CacheParameters(
+  //       level          = 2,
+  //       ways           = 4,
+  //       sets           = 512,
+  //       blockBytes     = 32,
+  //       beatBytes      = 32,
+  //       hintsSkipProbe = false
+  //     ),
+  //     InclusiveCacheMicroParameters(writeBytes = 32)
+  //   )
+  // )
+
   // don't modify order of following nodes
-  mem.node  := TLFragmenter(32, 64) := TLCacheCork()       := l2cache.node      := xbar.node
-  pbar.node := TLFIFOFixer()        := TLFragmenter(8, 32) := TLWidthWidget(32) := xbar.node
+  mem.node  := TLCacheCork() := xbar.node // l2cache.node        := xbar.node
+  pbar.node := TLFIFOFixer() := TLFragmenter(8, 32) := TLWidthWidget(32) := xbar.node
 
   rom.node               := pbar.node
   hart_id_allocator.node := pbar.node
@@ -72,15 +85,17 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
     xbar.node := TLBuffer() := node.get(i)
   }
 
-  class IntSourceNodeToModule(val num: Int)(implicit p: Parameters) extends LazyModule {
-    val sourceNode = IntSourceNode(IntSourcePortSimple(num, ports = 1, sources = 1))
-    lazy val module = new LazyModuleImp(this) {
-      val in = IO(Input(Vec(num, Bool())))
-      in.zip(sourceNode.out.head._1).foreach { case (i, s) => s := i }
-    }
+  class IntSourceBridge(val num: Int)(implicit p: Parameters) extends LazyModule {
+    val sourceNode  = IntSourceNode(IntSourcePortSimple(num, ports = 1, sources = 1))
+    lazy val module = new IntSourceBridgeModule(this)
   }
 
-  val plicSource = LazyModule(new IntSourceNodeToModule(2))
+  class IntSourceBridgeModule(outer: IntSourceBridge) extends LazyModuleImp(outer) {
+    val in = IO(Input(Vec(outer.num, Bool())))
+    in.zip(outer.sourceNode.out.head._1).foreach { case (i, s) => s := i }
+  }
+
+  val plicSource = LazyModule(new IntSourceBridge(2))
   plic.intnode := plicSource.sourceNode
 
   // interrupt sources

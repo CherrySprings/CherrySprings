@@ -1,11 +1,11 @@
 import chisel3._
 import chisel3.util._
 import difftest._
-import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
 import freechips.rocketchip.util._
+import org.chipsalliance.cde.config._
 import testchipip._
 
 abstract class SoCAbstract(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
@@ -27,7 +27,7 @@ class SoCAbstractImp[+L <: SoCAbstract](l: L) extends LazyModuleImp(l) with HasC
 class SoCImp(implicit p: Parameters) extends SoCAbstract {
   val icache  = LazyModule(new ICache)
   val dcache  = LazyModule(new DCache)
-  val uncache = LazyModule(new UncacheCachePortToTileLinkBridge)
+  val uncache = LazyModule(new Uncache)
   val xbar    = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
   val node    = Some(TLIdentityNode())
 

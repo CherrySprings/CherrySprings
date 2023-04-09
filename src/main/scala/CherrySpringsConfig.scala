@@ -1,7 +1,7 @@
 import chisel3._
 import chisel3.util._
-import chipsalliance.rocketchip.config._
 import freechips.rocketchip.subsystem._
+import org.chipsalliance.cde.config._
 
 case object HartID extends Field[Int]
 case object ResetPC extends Field[BigInt]

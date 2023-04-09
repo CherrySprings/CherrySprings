@@ -1,6 +1,6 @@
 import chisel3._
 import chisel3.util._
-import chipsalliance.rocketchip.config._
+import org.chipsalliance.cde.config._
 
 class IF0(implicit p: Parameters) extends CherrySpringsModule {
   val io = IO(new Bundle {
