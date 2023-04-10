@@ -47,7 +47,7 @@ lazy val difftest = (project in file("difftest"))
 lazy val rocketchipInclusiveCache = (project in file("rocket-chip-inclusive-cache"))
   .settings(commonSettings, chiselSettings)
   .settings(
-    Compile / scalaSource := baseDirectory.value / "design/craft"
+    Compile / scalaSource := baseDirectory.value / "design/craft/inclusivecache/src"
   )
   .dependsOn(rocketchip)
 
