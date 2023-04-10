@@ -67,6 +67,25 @@ class SoCImp(implicit p: Parameters) extends SoCAbstract {
 
     // uncache
     uncache.module.io.in <> core.io.uncache
+
+    if (debugBus) {
+      val (tl, edge) = node.get.out.head
+      when(tl.a.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - a] ${tl.a.bits}\n")
+      }
+      when(tl.b.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - b] ${tl.b.bits}\n")
+      }
+      when(tl.c.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - c] ${tl.c.bits}\n")
+      }
+      when(tl.d.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - d] ${tl.d.bits}\n")
+      }
+      when(tl.e.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - e] ${tl.e.bits}\n")
+      }
+    }
   }
 }
 

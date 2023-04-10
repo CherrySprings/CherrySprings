@@ -83,6 +83,7 @@ trait HasCherrySpringsParameters {
   def debugUncache:     Boolean = false
   def debugPortProxy:   Boolean = false
   def debugTLB:         Boolean = false
+  def debugBus:         Boolean = false
 }
 
 abstract class CherrySpringsModule(implicit val p: Parameters) extends Module with HasCherrySpringsParameters
