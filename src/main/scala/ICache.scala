@@ -50,15 +50,16 @@ class ICacheModule(outer: ICache) extends LazyModuleImp(outer) with HasCherrySpr
   val array = Module(new SRAM(depth = cacheNumSets, dw = (new CacheEntry).len()))
   val valid = RegInit(VecInit(Seq.fill(cacheNumSets)(false.B)))
 
-  // default input
-  array.io.addr  := 0.U
-  array.io.wdata := 0.U
-  array.io.wen   := false.B
-
   // pipeline control signals
   val s1_valid = Wire(Bool())
   val s2_ready = Wire(Bool())
   val fire     = s1_valid & s2_ready
+
+  // default input
+  array.io.en    := fire || tl.d.fire
+  array.io.addr  := 0.U
+  array.io.wdata := 0.U
+  array.io.wen   := false.B
 
   // array output in stage 2
   val array_out = Wire(new CacheEntry)
