@@ -9,6 +9,7 @@ import freechips.rocketchip.util._
 import java.nio._
 import java.nio.file._
 import org.chipsalliance.cde.config._
+import sifive.blocks.inclusivecache._
 import testchipip._
 
 abstract class FPGAAbstract(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
@@ -52,27 +53,27 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
     new TLROM(
       base            = 0x10000,
       size            = 0x10000,
-      contentsDelayed = boot_rom_contents,
+      contentsDelayed = boot_rom_contents.toIndexedSeq,
       beatBytes       = 8
     )
   )
 
-  // val l2cache = LazyModule(
-  //   new InclusiveCache(
-  //     CacheParameters(
-  //       level          = 2,
-  //       ways           = 4,
-  //       sets           = 512,
-  //       blockBytes     = 32,
-  //       beatBytes      = 32,
-  //       hintsSkipProbe = false
-  //     ),
-  //     InclusiveCacheMicroParameters(writeBytes = 32)
-  //   )
-  // )
+  val l2cache = LazyModule(
+    new InclusiveCache(
+      CacheParameters(
+        level          = 2,
+        ways           = 4,
+        sets           = 512,
+        blockBytes     = 32,
+        beatBytes      = 32,
+        hintsSkipProbe = false
+      ),
+      InclusiveCacheMicroParameters(writeBytes = 32)
+    )
+  )
 
   // don't modify order of following nodes
-  mem.node  := TLCacheCork() := xbar.node // l2cache.node        := xbar.node
+  mem.node  := TLCacheCork() := l2cache.node        := xbar.node
   pbar.node := TLFIFOFixer() := TLFragmenter(8, 32) := TLWidthWidget(32) := xbar.node
 
   rom.node               := pbar.node

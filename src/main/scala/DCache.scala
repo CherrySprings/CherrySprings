@@ -26,11 +26,14 @@ class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsPar
 
 class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpringsParameters {
   val io = IO(new Bundle {
-    val cache      = Flipped(new CachePortIO)
-    val fence_i    = Input(Bool())
-    val fence_i_ok = Output(Bool())
+    val cache = Flipped(new CachePortIO)
   })
+
   val (tl, edge) = outer.node.out.head
+
+  // latch input channels
+  val tl_b_bits_r = RegEnable(tl.b.bits, 0.U.asTypeOf(tl.b.bits.cloneType), tl.b.fire)
+  val tl_d_bits_r = RegEnable(tl.d.bits, 0.U.asTypeOf(tl.d.bits.cloneType), tl.d.fire)
 
   /*
    * Data cache (PIPT) organization
@@ -47,19 +50,16 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
 
   val req   = io.cache.req
   val resp  = io.cache.resp
-  val req_r = RegInit(0.U.asTypeOf(new CachePortReq))
+  val req_r = RegEnable(req.bits, 0.U.asTypeOf(req.bits.cloneType), req.fire)
 
   val array = Module(new SRAM(depth = cacheNumSets, dw = (new CacheEntry).len()))
   val valid = RegInit(VecInit(Seq.fill(cacheNumSets)(false.B)))
   val dirty = RegInit(VecInit(Seq.fill(cacheNumSets)(false.B)))
 
   // FSM
-  val s_init :: s_check :: s_release :: s_release_ack :: s_acquire :: s_grant :: s_grant_ack :: s_ok :: Nil = Enum(8)
-  val state                                                                                                 = RegInit(s_init)
-
-  // FSM for fence.i
-  val s_fi_init :: s_fi_next :: s_fi_check :: s_fi_release :: s_fi_release_ack :: s_fi_ok :: Nil = Enum(6)
-  val state_fi                                                                                   = RegInit(s_fi_init)
+  val s_init :: s_probe_ack :: s_check :: s_release :: s_release_ack :: s_acquire :: s_grant :: s_grant_ack :: s_ok :: Nil =
+    Enum(9)
+  val state = RegInit(s_init)
 
   // write data & mask expanded to 256 bits from input request
   val req_wdata_256 = Wire(UInt(256.W))
@@ -67,11 +67,23 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   req_wdata_256 := req_r.wdata << (getOffset(req_r.addr) << 6)
   req_wmask_256 := MaskExpand(req_r.wmask) << (getOffset(req_r.addr) << 6)
 
+  // array access address (requested by LSU or probe from L2 cache)
+  val array_addr = Wire(UInt(paddrLen.W))
+  when(tl.b.fire) { // b channel has higher priority
+    array_addr := tl.b.bits.address
+  }.elsewhen(req.fire) {
+    array_addr := req.bits.addr
+  }.elsewhen(state === s_probe_ack) {
+    array_addr := tl_b_bits_r.address
+  }.otherwise {
+    array_addr := req_r.addr
+  }
+
   // default input
   val array_wdata = Wire(new CacheEntry)
   array_wdata.tag  := getTag(req_r.addr)
   array_wdata.data := 0.U
-  array.io.addr    := Mux(state === s_init, getIndex(req.bits.addr), getIndex(req_r.addr))
+  array.io.addr    := getIndex(array_addr)
   array.io.wdata   := array_wdata.asUInt
   array.io.wen     := false.B
 
@@ -80,36 +92,43 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   val array_hit   = Wire(Bool())
   val array_dirty = Wire(Bool())
   array_out   := array.io.rdata.asTypeOf(new CacheEntry)
-  array_hit   := valid(getIndex(req_r.addr)) && (getTag(req_r.addr) === array_out.tag)
-  array_dirty := valid(getIndex(req_r.addr)) && dirty(getIndex(req_r.addr))
+  array_hit   := valid(getIndex(array_addr)) && (getTag(array_addr) === array_out.tag)
+  array_dirty := valid(getIndex(array_addr)) && dirty(getIndex(array_addr))
 
   // write to cache when hit & wen
   when(state === s_check) {
     array_wdata.data := MaskData(array_out.data, req_wdata_256, req_wmask_256)
     array.io.wen     := req_r.wen && array_hit
     when(array.io.wen) {
-      dirty(getIndex(req_r.addr)) := true.B
+      dirty(getIndex(array_addr)) := true.B
     }
   }
 
-  // when input request fire
-  when(req.fire) {
-    req_r := req.bits
-  }
-
-  val tl_d_bits_r = RegInit(0.U.asTypeOf(tl.d.bits))
-  when(tl.d.fire) {
-    tl_d_bits_r := tl.d.bits
+  // clear cacheline when being probed
+  when((state === s_probe_ack) && tl.c.fire) {
+    valid(getIndex(array_addr)) := false.B
+    dirty(getIndex(array_addr)) := false.B
   }
 
   switch(state) {
     is(s_init) {
-      when(req.fire) {
+      when(tl.b.fire) { // b channel has higher priority
+        state := s_probe_ack
+      }.elsewhen(req.fire) {
         state := s_check
       }
     }
+    is(s_probe_ack) {
+      when(tl.c.fire) {
+        state := s_init
+      }
+    }
     is(s_check) {
-      state := Mux(resp.fire, s_init, Mux(array_hit, s_check, Mux(array_dirty, s_release, s_acquire)))
+      when(resp.fire) {
+        state := s_init
+      }.elsewhen(!array_hit) {
+        state := Mux(array_dirty, s_release, s_acquire)
+      }
     }
     is(s_release) {
       when(tl.c.fire) {
@@ -144,23 +163,18 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   }
 
   // cache read
-  val array_hit_data = HoldUnless(
-    MuxLookup(
-      getOffset(req_r.addr),
-      0.U(64.W),
-      Seq(
-        0.U -> array_out.data(63, 0),
-        1.U -> array_out.data(127, 64),
-        2.U -> array_out.data(191, 128),
-        3.U -> array_out.data(255, 192)
-      )
-    ),
-    RegNext(req.fire)
+  val array_data_64 = MuxLookup(
+    getOffset(array_addr),
+    0.U(64.W),
+    Seq(
+      0.U -> array_out.data(63, 0),
+      1.U -> array_out.data(127, 64),
+      2.U -> array_out.data(191, 128),
+      3.U -> array_out.data(255, 192)
+    )
   )
 
-  // cache write
-  val wdata = RegEnable(tl.d.bits.data, 0.U(256.W), tl.d.fire)
-
+  // cache refill
   val refill_data_256 = Mux(
     req_r.wen,
     MaskData(tl.d.bits.data, req_wdata_256, req_wmask_256),
@@ -174,84 +188,32 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
     dirty(getIndex(req_r.addr)) := req_r.wen
   }
 
-  val refill_data = MuxLookup(
-    getOffset(req_r.addr),
-    0.U(64.W),
-    Seq(
-      0.U -> wdata(63, 0),
-      1.U -> wdata(127, 64),
-      2.U -> wdata(191, 128),
-      3.U -> wdata(255, 192)
-    )
-  )
-
-  // dirty addr & data to be written back to memory
-  val dirty_addr = Wire(UInt(paddrLen.W))
-  val dirty_data = Wire(UInt(256.W))
-  dirty_addr := Cat(array_out.tag, RegNext(array.io.addr), 0.U(5.W))
-  dirty_data := array_out.data
-
-  // fence.i
-  io.fence_i_ok := (state_fi === s_fi_ok)
-
-  val fi_check_addr = RegInit(0.U(log2Up(cacheNumSets).W))
-  when(io.fence_i) {
-    array.io.addr := fi_check_addr
-  }
-
-  switch(state_fi) {
-    is(s_fi_init) {
-      when(io.fence_i) {
-        state_fi := s_fi_check
-      }
-    }
-    is(s_fi_check) {
-      state_fi := Mux(valid(fi_check_addr) && dirty(fi_check_addr), s_fi_release, s_fi_next)
-    }
-    is(s_fi_release) {
-      when(tl.c.fire) {
-        state_fi := s_fi_release_ack
-      }
-    }
-    is(s_fi_release_ack) {
-      when(tl.d.fire) {
-        state_fi := s_fi_next
-      }
-    }
-    is(s_fi_next) {
-      fi_check_addr := fi_check_addr + 1.U
-      state_fi      := Mux(fi_check_addr === (cacheNumSets - 1).U, s_fi_ok, s_fi_check)
-    }
-    is(s_fi_ok) {
-      for (i <- 0 until cacheNumSets) {
-        dirty(i) := false.B
-        valid(i) := false.B
-      }
-      state_fi := s_fi_init
-    }
-  }
-
-  val req_addr_aligned = Cat(req_r.addr(paddrLen - 1, 5), Fill(5, 0.U))
+  // aligned address
+  val release_addr_aligned = Cat(array_out.tag, RegNext(array.io.addr), 0.U(5.W))
+  val req_addr_aligned     = Cat(req_r.addr(paddrLen - 1, 5), 0.U(5.W))
 
   // send TL burst read request
-  val source            = Counter(tl.a.fire, sourceRange)._1
-  val (_, acquire_bits) = edge.AcquireBlock(source, req_addr_aligned, 5.U, TLPermissions.NtoT)
-  val (_, release_bits) = edge.Release(source, dirty_addr, 5.U, TLPermissions.TtoN, dirty_data)
-  val grant_ack_bits    = edge.GrantAck(tl_d_bits_r)
+  val source              = Counter(tl.a.fire || tl.c.fire, sourceRange)._1
+  val (_, acquire_bits)   = edge.AcquireBlock(source, req_addr_aligned, 5.U, TLPermissions.NtoT)
+  val probe_ack_bits      = edge.ProbeAck(tl_b_bits_r, TLPermissions.NtoN)
+  val probe_ack_data_bits = edge.ProbeAck(tl_b_bits_r, TLPermissions.TtoT, array_out.data)
+  val (_, release_bits)   = edge.Release(source, release_addr_aligned, 5.U, TLPermissions.TtoN, array_out.data)
+  val grant_ack_bits      = edge.GrantAck(tl_d_bits_r)
 
   tl.a.bits  := acquire_bits
   tl.a.valid := (state === s_acquire)
-  tl.c.bits  := release_bits
-  tl.c.valid := (state === s_release) || (state_fi === s_fi_release)
-  tl.d.ready := (state === s_release_ack) || (state === s_grant) || (state_fi === s_fi_release_ack)
+  tl.b.ready := (state === s_init)
+  tl.c.bits  := Mux(state === s_probe_ack, Mux(array_hit, probe_ack_data_bits, probe_ack_bits), release_bits)
+  tl.c.valid := (state === s_probe_ack) || (state === s_release)
+  tl.d.ready := (state === s_release_ack) || (state === s_grant)
   tl.e.bits  := grant_ack_bits
   tl.e.valid := (state === s_grant_ack)
 
   // cache port handshake
-  req.ready       := (state === s_init) && !io.fence_i && (state_fi === s_fi_init)
+  req.ready       := (state === s_init)
   resp.valid      := (state === s_check && array_hit) || (state === s_ok)
   resp.bits       := 0.U.asTypeOf(new CachePortResp)
-  resp.bits.rdata := Mux(req_r.wen, 0.U, Mux(state === s_ok, refill_data, array_hit_data))
+  resp.bits.rdata := array_data_64
 
   if (debugDCache) {
     when(req.fire) {

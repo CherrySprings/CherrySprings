@@ -58,10 +58,6 @@ class SoCImp(implicit p: Parameters) extends SoCAbstract {
     icache.module.io.cache   <> core.io.imem
     icache.module.io.fence_i := core.io.fence_i
 
-    // data cache
-    dcache.module.io.fence_i := core.io.fence_i
-    core.io.fence_i_ok       := dcache.module.io.fence_i_ok
-
     // connect ptw port to data cache
     val xbar = Module(new CachePortXBarNto1(3))
     xbar.io.in(0)          <> core.io.dmem
