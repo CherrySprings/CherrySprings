@@ -6,9 +6,11 @@ lazy val commonSettings = Seq(
     "-deprecation",
     "-unchecked"
   ),
-  libraryDependencies ++= Seq("org.scala-lang" % "scala-reflect" % scalaVersion.value),
-  libraryDependencies ++= Seq("org.json4s" %% "json4s-jackson" % "4.0.6"),
-  libraryDependencies ++= Seq("org.scalatest" %% "scalatest" % "3.2.14" % "test")
+  libraryDependencies ++= Seq(
+    "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+    "org.json4s" %% "json4s-jackson" % "4.0.6",
+    "org.scalatest" %% "scalatest" % "3.2.14" % "test"
+  )
 )
 
 lazy val chiselSettings = Seq(
