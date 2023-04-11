@@ -42,7 +42,7 @@ class SoCImp(implicit p: Parameters) extends SoCAbstract {
   // don't modify order of following nodes
   xbar.node := icache.node // 0
   xbar.node := dcache.node // 1
-  xbar.node := uncache.node // 2
+  xbar.node := TLWidthWidget(8) := uncache.node // 2
   node.get  := xbar.node
 
   override lazy val module = new SoCAbstractImp(this) {
