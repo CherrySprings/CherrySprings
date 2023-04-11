@@ -1,6 +1,6 @@
 import chisel3._
-import chipsalliance.rocketchip.config._
 import difftest._
+import org.chipsalliance.cde.config._
 
 class RegFile(implicit p: Parameters) extends CherrySpringsModule {
   val io = IO(new Bundle {

@@ -1,7 +1,7 @@
 import chisel3._
 import chisel3.util._
 import Constant._
-import chipsalliance.rocketchip.config._
+import org.chipsalliance.cde.config._
 
 // Rocket ALU
 class ALU(implicit p: Parameters) extends CherrySpringsModule {

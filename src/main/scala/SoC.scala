@@ -1,11 +1,11 @@
 import chisel3._
 import chisel3.util._
 import difftest._
-import chipsalliance.rocketchip.config._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import freechips.rocketchip.interrupts._
 import freechips.rocketchip.util._
+import org.chipsalliance.cde.config._
 import testchipip._
 
 abstract class SoCAbstract(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
@@ -27,7 +27,7 @@ class SoCAbstractImp[+L <: SoCAbstract](l: L) extends LazyModuleImp(l) with HasC
 class SoCImp(implicit p: Parameters) extends SoCAbstract {
   val icache  = LazyModule(new ICache)
   val dcache  = LazyModule(new DCache)
-  val uncache = LazyModule(new UncacheCachePortToTileLinkBridge)
+  val uncache = LazyModule(new Uncache)
   val xbar    = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
   val node    = Some(TLIdentityNode())
 
@@ -58,10 +58,6 @@ class SoCImp(implicit p: Parameters) extends SoCAbstract {
     icache.module.io.cache   <> core.io.imem
     icache.module.io.fence_i := core.io.fence_i
 
-    // data cache
-    dcache.module.io.fence_i := core.io.fence_i
-    core.io.fence_i_ok       := dcache.module.io.fence_i_ok
-
     // connect ptw port to data cache
     val xbar = Module(new CachePortXBarNto1(3))
     xbar.io.in(0)          <> core.io.dmem
@@ -71,6 +67,25 @@ class SoCImp(implicit p: Parameters) extends SoCAbstract {
 
     // uncache
     uncache.module.io.in <> core.io.uncache
+
+    if (debugBus) {
+      val (tl, edge) = node.get.out.head
+      when(tl.a.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - a] ${tl.a.bits}\n")
+      }
+      when(tl.b.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - b] ${tl.b.bits}\n")
+      }
+      when(tl.c.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - c] ${tl.c.bits}\n")
+      }
+      when(tl.d.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - d] ${tl.d.bits}\n")
+      }
+      when(tl.e.fire) {
+        printf(cf"${DebugTimer()} [TL] [Hart ${hartID} - e] ${tl.e.bits}\n")
+      }
+    }
   }
 }
 

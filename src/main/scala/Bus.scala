@@ -1,9 +1,9 @@
 import chisel3._
 import chisel3.util._
-import chipsalliance.rocketchip.config._
-import Constant._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
+import org.chipsalliance.cde.config._
+import Constant._
 
 class CachePortReq(implicit p: Parameters) extends CherrySpringsBundle {
   val addr  = Output(UInt(vaddrLen.W))
@@ -102,7 +102,7 @@ class CachePortXBar1to2(implicit p: Parameters) extends CherrySpringsModule {
   io.out(1).resp.ready := io.in.resp.ready
 }
 
-class UncacheCachePortToTileLinkBridge(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
+class Uncache(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   require(xLen == 64)
 
   val node = TLClientNode(
@@ -110,7 +110,7 @@ class UncacheCachePortToTileLinkBridge(implicit p: Parameters) extends LazyModul
       TLMasterPortParameters.v1(
         clients = Seq(
           TLMasterParameters.v1(
-            name     = s"UncacheCachePort",
+            name     = s"uncache-${hartID}",
             sourceId = IdRange(0, sourceRange)
           )
         )
@@ -118,39 +118,40 @@ class UncacheCachePortToTileLinkBridge(implicit p: Parameters) extends LazyModul
     )
   )
 
-  lazy val module = new LazyModuleImp(this) {
-    val io = IO(new Bundle {
-      val in = Flipped(new CachePortIO)
-    })
+  lazy val module = new UncacheModule(this)
+}
 
-    // TL-UL for uncache data port
+class UncacheModule(outer: Uncache) extends LazyModuleImp(outer) with HasCherrySpringsParameters {
+  val io = IO(new Bundle {
+    val in = Flipped(new CachePortIO)
+  })
 
-    val (tl, edge) = node.out.head
+  // TL-UL for uncache data port
+  val (tl, edge) = outer.node.out.head
 
-    val req  = io.in.req
-    val resp = io.in.resp
+  val req  = io.in.req
+  val resp = io.in.resp
 
-    tl.a.valid := req.valid
-    req.ready  := tl.a.ready
-    resp.valid := tl.d.valid
-    tl.d.ready := resp.ready
+  tl.a.valid := req.valid
+  req.ready  := tl.a.ready
+  resp.valid := tl.d.valid
+  tl.d.ready := resp.ready
 
-    val source = Counter(tl.a.fire, sourceRange)._1
+  val source = Counter(tl.a.fire, sourceRange)._1
 
-    val (_, get_bits) = edge.Get(source, req.bits.addr, req.bits.len)
-    val (_, put_bits) = edge.Put(source, req.bits.addr, req.bits.len, req.bits.wdata, req.bits.wmask)
+  val (_, get_bits) = edge.Get(source, req.bits.addr, req.bits.len)
+  val (_, put_bits) = edge.Put(source, req.bits.addr, req.bits.len, req.bits.wdata, req.bits.wmask)
 
-    tl.a.bits       := Mux(req.bits.wen, put_bits, get_bits)
-    resp.bits       := 0.U.asTypeOf(new CachePortResp)
-    resp.bits.rdata := tl.d.bits.data
+  tl.a.bits       := Mux(req.bits.wen, put_bits, get_bits)
+  resp.bits       := 0.U.asTypeOf(new CachePortResp)
+  resp.bits.rdata := tl.d.bits.data
 
-    if (debugUncache) {
-      when(req.fire) {
-        printf(cf"${DebugTimer()} [ MMIO ] [in -req ] ${req.bits}\n")
-      }
-      when(resp.fire) {
-        printf(cf"${DebugTimer()} [ MMIO ] [in -resp] ${resp.bits}\n")
-      }
+  if (debugUncache) {
+    when(req.fire) {
+      printf(cf"${DebugTimer()} [ MMIO ] [in -req ] ${req.bits}\n")
+    }
+    when(resp.fire) {
+      printf(cf"${DebugTimer()} [ MMIO ] [in -resp] ${resp.bits}\n")
     }
   }
 }

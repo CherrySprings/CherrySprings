@@ -1,7 +1,7 @@
 import chisel3._
 import chisel3.util._
-import chipsalliance.rocketchip.config._
 import freechips.rocketchip.subsystem._
+import org.chipsalliance.cde.config._
 
 case object HartID extends Field[Int]
 case object ResetPC extends Field[BigInt]
@@ -13,8 +13,7 @@ case object BTBSize extends Field[Int]
 
 class CoreConfig
     extends Config((site, here, up) => {
-      case HartID       => 0
-      case ResetPC      => BigInt("00010000", radix = 16)
+      case ResetPC      => BigInt("80000000", radix = 16)
       case BootROMImage => "./bootrom/bootrom.img"
       case CacheNumSets => 512 // 16 KB
       case EnableBPU    => true
@@ -22,21 +21,25 @@ class CoreConfig
       case BTBSize      => 16
     })
 
-case object EnableDifftest extends Field[Boolean](false)
-case object EnableSerdes extends Field[Boolean](false)
+case object NumHarts extends Field[Int]
 case object CoreTimerFreq extends Field[Int]
 case object FpgaTimerFreq extends Field[Int]
 
 class SystemConfig
     extends Config((site, here, up) => {
-      case CoreTimerFreq => 10 // suppose 100 MHz core frequency => 10 MHz timer frequency
-      case FpgaTimerFreq => 10 // suppose 100 MHz FPGA frequency => 10 MHz timer frequency
+      case NumHarts      => 1
+      case CoreTimerFreq => 2 // suppose 200 MHz core frequency => 200 / 2 = 100 MHz timer frequency
+      case FpgaTimerFreq => 2 // suppose 200 MHz FPGA frequency => 200 / 2 = 100 MHz timer frequency
     })
+
+case object EnableDifftest extends Field[Boolean](false)
 
 class EnableDifftestConfig
     extends Config((site, here, up) => {
       case EnableDifftest => true
     })
+
+case object EnableSerdes extends Field[Boolean](false)
 
 class EnableSerdesConfig
     extends Config((site, here, up) => {
@@ -53,6 +56,7 @@ class SynthesisConfig
 
 trait HasCherrySpringsParameters {
   implicit val p: Parameters
+  def numHarts:         Int     = p(NumHarts)
   def hartID:           Int     = p(HartID)
   def resetPC:          BigInt  = p(ResetPC)
   def bootROMImage:     String  = p(BootROMImage)
@@ -79,6 +83,7 @@ trait HasCherrySpringsParameters {
   def debugUncache:     Boolean = false
   def debugPortProxy:   Boolean = false
   def debugTLB:         Boolean = false
+  def debugBus:         Boolean = false
 }
 
 abstract class CherrySpringsModule(implicit val p: Parameters) extends Module with HasCherrySpringsParameters

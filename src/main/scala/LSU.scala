@@ -1,8 +1,8 @@
 import chisel3._
 import chisel3.util._
+import freechips.rocketchip.rocket._
+import org.chipsalliance.cde.config._
 import Constant._
-import chipsalliance.rocketchip.config._
-import freechips.rocketchip.rocket.Causes
 
 class LSU(implicit p: Parameters) extends CherrySpringsModule {
   require(xLen == 64)
@@ -45,7 +45,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   wmask := MuxLookup(
     io.uop.mem_len,
     0.U,
-    Array(
+    Seq(
       s"b$MEM_BYTE".U  -> "b00000001".U(8.W),
       s"b$MEM_HALF".U  -> "b00000011".U(8.W),
       s"b$MEM_WORD".U  -> "b00001111".U(8.W),
@@ -83,7 +83,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   misaligned := MuxLookup(
     io.uop.mem_len,
     false.B,
-    Array(
+    Seq(
       s"b$MEM_HALF".U  -> (io.addr(0) =/= 0.U),
       s"b$MEM_WORD".U  -> (io.addr(1, 0) =/= 0.U),
       s"b$MEM_DWORD".U -> (io.addr(2, 0) =/= 0.U)
@@ -150,7 +150,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   wdata_amo := MuxLookup(
     io.uop.lsu_op,
     0.U,
-    Array(
+    Seq(
       s"b$LSU_AMOSWAP".U -> wdata_amo_raw,
       s"b$LSU_AMOADD".U  -> (wdata_amo_raw + rdata_amo),
       s"b$LSU_AMOAND".U  -> (wdata_amo_raw & rdata_amo),
@@ -173,7 +173,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   rdata_sign := (!is_ldu && MuxLookup(
     io.uop.mem_len,
     false.B,
-    Array(
+    Seq(
       s"b$MEM_BYTE".U -> rdata_raw(7),
       s"b$MEM_HALF".U -> rdata_raw(15),
       s"b$MEM_WORD".U -> rdata_raw(31)
@@ -182,7 +182,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   rdata := MuxLookup(
     io.uop.mem_len,
     0.U,
-    Array(
+    Seq(
       s"b$MEM_BYTE".U  -> Cat(Fill(56, rdata_sign), rdata_raw(7, 0)),
       s"b$MEM_HALF".U  -> Cat(Fill(48, rdata_sign), rdata_raw(15, 0)),
       s"b$MEM_WORD".U  -> Cat(Fill(32, rdata_sign), rdata_raw(31, 0)),

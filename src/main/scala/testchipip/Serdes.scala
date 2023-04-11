@@ -3,9 +3,9 @@ package testchipip
 import chisel3._
 import chisel3.util._
 import freechips.rocketchip.diplomacy._
-import freechips.rocketchip.config._
 import freechips.rocketchip.util.HellaPeekingArbiter
 import freechips.rocketchip.tilelink._
+import org.chipsalliance.cde.config._
 
 class SerialIO(val w: Int) extends Bundle {
   val in  = Flipped(Decoupled(UInt(w.W)))

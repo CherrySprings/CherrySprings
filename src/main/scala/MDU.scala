@@ -1,8 +1,8 @@
 import chisel3._
 import chisel3.util._
-import Constant._
 import freechips.rocketchip.rocket._
-import chipsalliance.rocketchip.config._
+import org.chipsalliance.cde.config._
+import Constant._
 
 class MDU(implicit p: Parameters) extends CherrySpringsModule {
   val io = IO(new Bundle {

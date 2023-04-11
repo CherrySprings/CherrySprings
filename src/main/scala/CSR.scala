@@ -1,10 +1,9 @@
 import chisel3._
 import chisel3.util._
-import Constant._
-import chipsalliance.rocketchip.config._
 import difftest._
-import freechips.rocketchip.rocket.Causes
-import freechips.rocketchip.rocket.CSRs
+import freechips.rocketchip.rocket._
+import org.chipsalliance.cde.config._
+import Constant._
 
 object PRV {
   val U = 0
@@ -30,8 +29,8 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     val mpp          = Output(UInt(2.W))
     val sv39_en      = Output(Bool())
     val satp_ppn     = Output(UInt(44.W))
-    val fence_i_ok   = Input(Bool())
     val sfence_vma   = Output(Bool())
+    val fence_i      = Output(Bool())
     val jmp_packet   = Output(new JmpPacket)
     val lsu_addr     = Input(UInt(xLen.W))
     val lsu_exc_code = Input(UInt(4.W))
@@ -57,7 +56,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   wdata := MuxLookup(
     io.rw.cmd,
     0.U,
-    Array(
+    Seq(
       s"b$CSR_RW".U -> io.rw.wdata,
       s"b$CSR_RS".U -> (rdata | io.rw.wdata),
       s"b$CSR_RC".U -> (rdata & ~io.rw.wdata)
@@ -335,7 +334,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        mhartid
    * Description: Hardware thread ID
    */
-  val mhartid          = RegInit(0.U(xLen.W))
+  val mhartid          = RegInit(hartID.U(xLen.W))
   val mhartid_writable = RegInit(true.B)
   when(io.rw.addr === CSRs.mhartid.U) {
     rdata := mhartid
@@ -702,10 +701,12 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   /*
    * System instructions
    */
-  val is_sfv    = io.uop.sys_op === s"b$SYS_SFV".U
-  val sfv_legal = prv_is_ms && !(prv_is_s && mstatus_tvm.asBool)
-  val is_sys    = io.sfence_vma && io.fence_i_ok
+  val is_sfv     = (io.uop.sys_op === s"b$SYS_SFV".U) && io.uop.valid
+  val sfv_legal  = prv_is_ms && !(prv_is_s && mstatus_tvm.asBool)
+  val is_fence_i = (io.uop.sys_op === s"b$SYS_FENCEI".U) && io.uop.valid
+  val is_sys     = io.sfence_vma || is_fence_i
   io.sfence_vma := is_sfv && sfv_legal
+  io.fence_i    := is_fence_i
 
   /*
    * Exception & Interrupt
@@ -734,7 +735,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
       io.lsu_exc_code,
       Mux(is_exc_from_csr || is_exc_from_sys, Causes.illegal_instruction.U, 0.U)
     ),
-    Array(
+    Seq(
       s"b$EXC_IAM".U -> Causes.misaligned_fetch.U,
       s"b$EXC_IAF".U -> Causes.fetch_access.U,
       s"b$EXC_II".U  -> Causes.illegal_instruction.U,
