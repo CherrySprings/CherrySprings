@@ -133,7 +133,9 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
       }
     }
     is(s_release) {
-      when(tl.c.fire && !probing) {
+      when(!array_dirty) {
+        state := s_acquire
+      }.elsewhen(tl.c.fire && !probing) {
         state := s_release_ack
       }
     }
@@ -195,7 +197,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   tl.a.valid := (state === s_acquire)
   tl.b.ready := !probing
   tl.c.bits  := Mux(probing, Mux(probe_hit, probe_ack_data_bits, probe_ack_bits), release_bits)
-  tl.c.valid := probing || (state === s_release)
+  tl.c.valid := probing || ((state === s_release) && array_dirty)
   tl.d.ready := (state === s_release_ack) || (state === s_grant)
   tl.e.bits  := grant_ack_bits
   tl.e.valid := (state === s_grant_ack)
