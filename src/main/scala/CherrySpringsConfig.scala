@@ -27,7 +27,6 @@ case object FpgaTimerFreq extends Field[Int]
 
 class SystemConfig
     extends Config((site, here, up) => {
-      case NumHarts      => 1
       case CoreTimerFreq => 2 // suppose 200 MHz core frequency => 200 / 2 = 100 MHz timer frequency
       case FpgaTimerFreq => 2 // suppose 200 MHz FPGA frequency => 200 / 2 = 100 MHz timer frequency
     })
