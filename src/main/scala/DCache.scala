@@ -117,7 +117,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   }
 
   // probing mode
-  val probing = BoolStopWatch(tl.b.fire, tl.c.fire)
+  val probing = BoolStopWatch(tl.b.fire, tl.c.fire, start_high_priority = true)
 
   switch(state) {
     is(s_init) {
@@ -173,8 +173,8 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
     array.io.addr := getIndex(probe_addr)
   }
 
-  // clear cacheline when being probed
-  when(probing && tl.c.fire) {
+  // clear cacheline when being probed and hit
+  when(probing && tl.c.fire && probe_hit) {
     valid(getIndex(probe_addr)) := false.B
     dirty(getIndex(probe_addr)) := false.B
   }
@@ -187,7 +187,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   val source              = Counter(tl.a.fire || tl.c.fire, sourceRange)._1
   val (_, acquire_bits)   = edge.AcquireBlock(source, req_addr_aligned, 5.U, TLPermissions.NtoT)
   val probe_ack_bits      = edge.ProbeAck(tl_b_bits_r, TLPermissions.NtoN)
-  val probe_ack_data_bits = edge.ProbeAck(tl_b_bits_r, TLPermissions.TtoT, probe_out.data)
+  val probe_ack_data_bits = edge.ProbeAck(tl_b_bits_r, TLPermissions.TtoN, probe_out.data)
   val (_, release_bits)   = edge.Release(source, release_addr_aligned, 5.U, TLPermissions.TtoN, array_out.data)
   val grant_ack_bits      = edge.GrantAck(tl_d_bits_r)
 
