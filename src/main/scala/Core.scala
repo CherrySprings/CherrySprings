@@ -87,28 +87,15 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
 
   alu_jmp_packet.valid := alu_jmp_packet.bp_update && (alu_jmp_packet.target =/= id_ex.io.out.bp_npc)
   alu_jmp_packet.target := Mux(
-    alu.io.uop.jmp_op === s"b$JMP_BR".U,
+    isBr(alu.io.uop.jmp_op),
     Mux(alu.io.cmp_out, id_ex.io.out.uop.pc + SignExt32_64(id_ex.io.out.uop.imm), id_ex.io.out.uop.npc),
     alu.io.adder_out
   )
   alu_jmp_packet.bp_update := id_ex.io.out.uop.valid && (alu.io.uop.jmp_op =/= s"b$JMP_N".U)
-  alu_jmp_packet.bp_taken := MuxLookup(
-    alu.io.uop.jmp_op,
-    false.B,
-    Seq(
-      s"b$JMP_BR".U   -> alu.io.cmp_out,
-      s"b$JMP_JAL".U  -> true.B,
-      s"b$JMP_JALR".U -> true.B
-    )
-  )
-  alu_jmp_packet.bp_pc := id_ex.io.out.uop.pc
+  alu_jmp_packet.bp_taken  := Mux(isBr(alu.io.uop.jmp_op), alu.io.cmp_out, isJalJalr(alu.io.uop.jmp_op))
+  alu_jmp_packet.bp_pc     := id_ex.io.out.uop.pc
 
-  val alu_br_out = Wire(UInt(xLen.W))
-  alu_br_out := Mux(
-    id_ex.io.out.uop.jmp_op === s"b$JMP_JAL".U || id_ex.io.out.uop.jmp_op === s"b$JMP_JALR".U,
-    id_ex.io.out.uop.npc,
-    alu.io.out
-  )
+  val alu_br_out = Mux(isJalJalr(id_ex.io.out.uop.jmp_op), id_ex.io.out.uop.npc, alu.io.out)
 
   val is_mem   = (id_ex.io.out.uop.fu === s"b$FU_LSU".U) && id_ex.io.out.uop.valid
   val is_mdu   = (id_ex.io.out.uop.fu === s"b$FU_MDU".U) && id_ex.io.out.uop.valid

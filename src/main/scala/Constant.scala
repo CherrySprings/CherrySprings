@@ -48,6 +48,9 @@ trait Constant {
   val JMP_JAL  = "10"
   val JMP_JALR = "11"
 
+  def isJalJalr(x: UInt): Bool = x(1).asBool
+  def isBr(x:      UInt): Bool = !x(1).asBool && x(0).asBool
+
   val MDU_X      = "????"
   val MDU_MUL    = "0000"
   val MDU_MULH   = "0001"
@@ -77,6 +80,7 @@ trait Constant {
 
   def isAmo(x:   UInt): Bool = x(4).asBool
   def isStore(x: UInt): Bool = !x(4).asBool && x(0).asBool
+  def isLrSc(x:  UInt): Bool = !x(4).asBool && x(3).asBool
 
   val MEM_X     = "??"
   val MEM_BYTE  = "00"
