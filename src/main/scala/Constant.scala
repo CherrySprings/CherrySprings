@@ -1,3 +1,5 @@
+import chisel3._
+
 trait Constant {
   val Y = "1"
   val N = "0"
@@ -63,15 +65,18 @@ trait Constant {
   val LSU_LDU     = "00100"
   val LSU_LR      = "01000"
   val LSU_SC      = "01001"
-  val LSU_AMOSWAP = "10010"
-  val LSU_AMOADD  = "11000"
-  val LSU_AMOAND  = "11001"
-  val LSU_AMOOR   = "11010"
-  val LSU_AMOXOR  = "11011"
-  val LSU_AMOMAX  = "11100"
-  val LSU_AMOMAXU = "11101"
-  val LSU_AMOMIN  = "11110"
-  val LSU_AMOMINU = "11111"
+  val LSU_AMOMIN  = "10000"
+  val LSU_AMOMAX  = "10001"
+  val LSU_AMOMINU = "10010"
+  val LSU_AMOMAXU = "10011"
+  val LSU_AMOADD  = "10100"
+  val LSU_AMOXOR  = "11000"
+  val LSU_AMOOR   = "11001"
+  val LSU_AMOAND  = "11010"
+  val LSU_AMOSWAP = "11011"
+
+  def isAmo(x:   UInt): Bool = x(4).asBool
+  def isStore(x: UInt): Bool = !x(4).asBool && x(0).asBool
 
   val MEM_X     = "??"
   val MEM_BYTE  = "00"

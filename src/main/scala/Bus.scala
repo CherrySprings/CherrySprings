@@ -3,14 +3,17 @@ import chisel3.util._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import org.chipsalliance.cde.config._
-import Constant._
 
 class CachePortReq(implicit p: Parameters) extends CherrySpringsBundle {
   val addr  = Output(UInt(vaddrLen.W))
   val wdata = Output(UInt(xLen.W))
   val wmask = Output(UInt((xLen / 8).W))
   val wen   = Output(Bool())
-  val len   = Output(UInt(2.W))
+  val len   = Output(UInt(2.W)) // only used for uncache (mmio) and lr/sc/amo for dcache
+  val lrsc  = Output(Bool()) // only used for dcache (lr when wen = 0 and sc when wen = 1)
+  val amo   = Output(UInt(Constant.LSU_X.length.W)) // only used for amo, and wen = 1
+
+  def isAmo(): Bool = Constant.isAmo(amo)
 
   override def toPrintable: Printable = {
     cf"addr=$addr%x wdata=$wdata%x wmask=$wmask%x wen=$wen len=$len"

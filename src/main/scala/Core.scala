@@ -16,9 +16,6 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     val interrupt = new ExternalInterruptIO
   })
 
-  def isAmo(lsu_op:   UInt) = lsu_op(4).asBool
-  def isStore(lsu_op: UInt) = (lsu_op === s"b$LSU_ST".U) || (lsu_op === s"b$LSU_SC".U)
-
   val prv        = Wire(UInt(2.W))
   val sv39_en    = Wire(Bool())
   val satp_ppn   = Wire(UInt(44.W))

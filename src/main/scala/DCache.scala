@@ -3,6 +3,7 @@ import chisel3.util._
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.tilelink._
 import org.chipsalliance.cde.config._
+import Constant._
 
 class DCache(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
   require(xLen == 64)
@@ -59,12 +60,6 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   val s_init :: s_check :: s_release :: s_release_ack :: s_acquire :: s_grant :: s_grant_ack :: s_ok :: Nil = Enum(8)
   val state                                                                                                 = RegInit(s_init)
 
-  // write data & mask expanded to 256 bits from input request
-  val req_wdata_256 = Wire(UInt(256.W))
-  val req_wmask_256 = Wire(UInt(256.W))
-  req_wdata_256 := req_r.wdata << (getOffset(req_r.addr) << 6)
-  req_wmask_256 := MaskExpand(req_r.wmask) << (getOffset(req_r.addr) << 6)
-
   // array access address (requested by LSU)
   val array_addr = Wire(UInt(paddrLen.W))
   array_addr := Mux(req.fire, req.bits.addr, req_r.addr)
@@ -96,19 +91,58 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
     )
   )
 
+  // amo data
+  val amo_rdata_raw_64 = Wire(UInt(64.W))
+  val amo_wdata_raw_64 = Wire(UInt(64.W))
+  val amo_result_64    = Wire(UInt(64.W))
+  val amo_wdata_64     = Wire(UInt(64.W))
+  val amo_w            = (req_r.len === s"b$MEM_WORD".U)
+  amo_rdata_raw_64 := Mux(
+    amo_w,
+    SignExt32_64(Mux(req_r.addr(2).asBool, rdata_64(63, 32), rdata_64(31, 0))),
+    rdata_64
+  )
+  amo_wdata_raw_64 := Mux(
+    amo_w,
+    SignExt32_64(Mux(req_r.addr(2).asBool, req_r.wdata(63, 32), req_r.wdata(31, 0))),
+    req_r.wdata
+  )
+  amo_result_64 := MuxLookup(
+    req_r.amo,
+    0.U,
+    Seq(
+      s"b$LSU_AMOSWAP".U -> amo_wdata_raw_64,
+      s"b$LSU_AMOADD".U  -> (amo_wdata_raw_64 + amo_rdata_raw_64),
+      s"b$LSU_AMOAND".U  -> (amo_wdata_raw_64 & amo_rdata_raw_64),
+      s"b$LSU_AMOOR".U   -> (amo_wdata_raw_64 | amo_rdata_raw_64),
+      s"b$LSU_AMOXOR".U  -> (amo_wdata_raw_64 ^ amo_rdata_raw_64),
+      s"b$LSU_AMOMAX".U  -> Mux(amo_wdata_raw_64.asSInt > amo_rdata_raw_64.asSInt, amo_wdata_raw_64, amo_rdata_raw_64),
+      s"b$LSU_AMOMAXU".U -> Mux(amo_wdata_raw_64.asUInt > amo_rdata_raw_64.asUInt, amo_wdata_raw_64, amo_rdata_raw_64),
+      s"b$LSU_AMOMIN".U  -> Mux(amo_wdata_raw_64.asSInt < amo_rdata_raw_64.asSInt, amo_wdata_raw_64, amo_rdata_raw_64),
+      s"b$LSU_AMOMINU".U -> Mux(amo_wdata_raw_64.asUInt < amo_rdata_raw_64.asUInt, amo_wdata_raw_64, amo_rdata_raw_64)
+    )
+  )
+  amo_wdata_64 := Mux(amo_w && req_r.addr(2).asBool, Cat(amo_result_64(31, 0), 0.U(32.W)), amo_result_64)
+
+  // write data & mask expanded to 256 bits from input request
+  val wdata_256 = Wire(UInt(256.W))
+  val wmask_256 = Wire(UInt(256.W))
+  wdata_256 := Mux(req_r.isAmo(), amo_wdata_64, req_r.wdata) << (getOffset(req_r.addr) << 6)
+  wmask_256 := MaskExpand(req_r.wmask) << (getOffset(req_r.addr) << 6)
+
   // cache write
   when(resp.fire) {
     when(state === s_ok) { // miss & refill (read / write) in last cycle
       array_wdata.data := Mux(
         req_r.wen,
-        MaskData(tl_d_bits_r.data, req_wdata_256, req_wmask_256),
+        MaskData(tl_d_bits_r.data, wdata_256, wmask_256),
         tl_d_bits_r.data
       )
       array.io.wen                := true.B
       valid(getIndex(array_addr)) := true.B
       dirty(getIndex(array_addr)) := req_r.wen
     }.otherwise { // hit & write
-      array_wdata.data := MaskData(array_out.data, req_wdata_256, req_wmask_256)
+      array_wdata.data := MaskData(array_out.data, wdata_256, wmask_256)
       array.io.wen     := req_r.wen && array_hit
       when(array.io.wen) {
         dirty(getIndex(array_addr)) := true.B
