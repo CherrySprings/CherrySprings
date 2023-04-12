@@ -256,11 +256,12 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   /* ----- Processor Difftest -------------------- */
 
   if (enableDifftest) {
-    val commit_is_cycle = commit_uop.valid && (commit_uop.fu === s"b$FU_CSR".U) &&
-      (commit_uop.instr(31, 20) === CSRs.mcycle.U || commit_uop.instr(31, 20) === CSRs.cycle.U)
-    val commit_is_time = commit_uop.valid && (commit_uop.fu === s"b$FU_CSR".U) &&
-      (commit_uop.instr(31, 20) === CSRs.time.U)
-    val commit_skip = (commit_uop.instr === PUTCH()) || ex_wb.io.out.is_mmio || commit_is_cycle || commit_is_time
+    val commit_is_csr  = commit_uop.valid && (commit_uop.fu === s"b$FU_CSR".U)
+    val commit_csr     = commit_uop.instr(31, 20)
+    val commit_cycle   = commit_is_csr && (commit_csr === CSRs.mcycle.U || commit_csr === CSRs.cycle.U)
+    val commit_time    = commit_is_csr && (commit_csr === CSRs.time.U)
+    val commit_instret = commit_is_csr && (commit_csr === CSRs.minstret.U || commit_csr === CSRs.instret.U)
+    val commit_skip    = ex_wb.io.out.is_mmio || commit_cycle || commit_time || commit_instret
 
     val diff_ic = Module(new DifftestInstrCommit)
     diff_ic.io.clock   := clock
@@ -307,10 +308,6 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
 
     val trap  = (commit_uop.instr === HALT()) && commit_uop.valid
     val rf_a0 = rf.io.rf_a0
-
-    when(commit_uop.instr === PUTCH() && commit_uop.valid) {
-      printf("%c", rf_a0)
-    }
 
     val diff_te = Module(new DifftestTrapEvent)
     diff_te.io.clock    := clock

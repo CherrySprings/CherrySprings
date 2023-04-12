@@ -7,10 +7,6 @@ object HALT {
   def apply() = BitPat("b00000000000000000000000001101011")
 }
 
-object PUTCH {
-  def apply() = BitPat("b00000000000000000000000001111011")
-}
-
 object DecodeTable {
   val decode_default: String = Seq(
     //                v  exc     fu      alu_op    jmp_op    mdu_op      lsu_op       mem_len    csr_op  sys_op      rs1/2_src   rd_wen imm_type dw64
@@ -122,7 +118,6 @@ object DecodeTable {
     AMOMINU_W  -> Seq(Y, EXC_N,  FU_LSU, ALU_ADD,  JMP_N,    MDU_X,      LSU_AMOMINU, MEM_WORD,  CSR_N,  SYS_N,      RS_RF,   RS_ZERO, Y, IMM_X, Y),
     AMOMINU_D  -> Seq(Y, EXC_N,  FU_LSU, ALU_ADD,  JMP_N,    MDU_X,      LSU_AMOMINU, MEM_DWORD, CSR_N,  SYS_N,      RS_RF,   RS_ZERO, Y, IMM_X, Y),
     // CUSTOM - DEBUG ONLY
-    HALT()     -> Seq(Y, EXC_N,  FU_ALU, ALU_ADD,  JMP_N,    MDU_X,      LSU_N,       MEM_X,     CSR_N,  SYS_N,      RS_RF,   RS_RF,   N, IMM_X, Y),
-    PUTCH()    -> Seq(Y, EXC_N,  FU_ALU, ALU_ADD,  JMP_N,    MDU_X,      LSU_N,       MEM_X,     CSR_N,  SYS_N,      RS_RF,   RS_RF,   N, IMM_X, Y)
+    HALT()     -> Seq(Y, EXC_N,  FU_ALU, ALU_ADD,  JMP_N,    MDU_X,      LSU_N,       MEM_X,     CSR_N,  SYS_N,      RS_RF,   RS_RF,   N, IMM_X, Y)
   ).map({ case (k, v) => k -> BitPat(s"b${v.reduce(_ + _)}") }), BitPat(s"b$decode_default"))
 }
