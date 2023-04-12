@@ -124,6 +124,25 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   )
   amo_wdata_64 := Mux(amo_w && req_r.addr(2).asBool, Cat(amo_result_64(31, 0), 0.U(32.W)), amo_result_64)
 
+  // lr / sc
+  val lrsc_reserved = RegInit(false.B)
+  val lrsc_addr     = RegInit(0.U((paddrLen - 5).W)) // reservation set is a 32-byte cacheline
+  val is_lr_r       = req_r.lrsc && !req_r.wen
+  when(resp.fire && is_lr_r) {
+    lrsc_reserved := true.B
+    lrsc_addr     := req_r.addr(paddrLen - 1, 5)
+  }
+  when(tl.b.fire && (tl.b.bits.address(paddrLen - 1, 5) === lrsc_addr)) {
+    lrsc_reserved := false.B
+  }
+  val is_sc     = req.bits.lrsc && req.bits.wen
+  val sc_fail   = is_sc && (!lrsc_reserved || (req.bits.addr(paddrLen - 1, 5) =/= lrsc_addr))
+  val is_sc_r   = req_r.lrsc && req_r.wen
+  val sc_fail_r = RegEnable(sc_fail, false.B, req.fire)
+  when(req.fire && is_sc) {
+    lrsc_reserved := false.B
+  }
+
   // write data & mask expanded to 256 bits from input request
   val wdata_256 = Wire(UInt(256.W))
   val wmask_256 = Wire(UInt(256.W))
@@ -138,9 +157,11 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
         MaskData(tl_d_bits_r.data, wdata_256, wmask_256),
         tl_d_bits_r.data
       )
-      array.io.wen                := true.B
-      valid(getIndex(array_addr)) := true.B
-      dirty(getIndex(array_addr)) := req_r.wen
+      when(!sc_fail_r) {
+        array.io.wen                := true.B
+        valid(getIndex(array_addr)) := true.B
+        dirty(getIndex(array_addr)) := req_r.wen
+      }
     }.otherwise { // hit & write
       array_wdata.data := MaskData(array_out.data, wdata_256, wmask_256)
       array.io.wen     := req_r.wen && array_hit
@@ -156,7 +177,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   switch(state) {
     is(s_init) {
       when(req.fire) {
-        state := s_check
+        state := Mux(sc_fail, s_ok, s_check)
       }
     }
     is(s_check) {
@@ -240,7 +261,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   req.ready       := (state === s_init) && !(probing || tl.b.fire)
   resp.valid      := ((state === s_check && array_hit) || (state === s_ok)) && !(probing || tl.b.fire)
   resp.bits       := 0.U.asTypeOf(new CachePortResp)
-  resp.bits.rdata := rdata_64
+  resp.bits.rdata := Mux(is_sc_r, sc_fail_r.asUInt, rdata_64)
 
   if (debugDCache) {
     when(req.fire) {

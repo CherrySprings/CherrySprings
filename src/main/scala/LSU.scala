@@ -22,11 +22,8 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     val is_mmio  = Output(Bool())
   })
 
-  val req    = io.dmem.req
-  val resp   = io.dmem.resp
-  val is_lr  = (io.uop.lsu_op === s"b$LSU_LR".U)
-  val is_sc  = (io.uop.lsu_op === s"b$LSU_SC".U)
-  val is_ldu = (io.uop.lsu_op === s"b$LSU_LDU".U)
+  val req  = io.dmem.req
+  val resp = io.dmem.resp
 
   val s_idle :: s_req :: s_resp :: s_exc :: Nil = Enum(4)
   val state                                     = RegInit(s_idle)
@@ -50,23 +47,10 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   req.bits.wmask := wmask
   req.bits.len   := io.uop.mem_len
   req.bits.wen   := io.is_store || io.is_amo
-  req.bits.lrsc  := false.B // todo
+  req.bits.lrsc  := isLrSc(io.uop.lsu_op)
   req.bits.amo   := io.uop.lsu_op
   req.valid      := (state === s_req)
   resp.ready     := (state === s_resp)
-
-  val lrsc_reserved = RegInit(false.B)
-  val lrsc_addr     = RegInit(0.U(xLen.W))
-  val sc_succeed    = is_sc && lrsc_reserved && (lrsc_addr === io.addr)
-  val sc_completed  = is_sc && Mux(sc_succeed, resp.fire, state === s_resp)
-
-  when(req.fire && is_lr) {
-    lrsc_reserved := true.B
-    lrsc_addr     := io.addr
-  }
-  when(is_sc && sc_completed) {
-    lrsc_reserved := false.B
-  }
 
   val misaligned = Wire(Bool())
   misaligned := MuxLookup(
@@ -82,13 +66,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   switch(state) {
     is(s_idle) {
       when(io.is_mem) {
-        when(misaligned) {
-          state := s_exc
-        }.elsewhen(is_sc) {
-          state := Mux(sc_succeed, s_req, s_resp)
-        }.otherwise {
-          state := s_req
-        }
+        state := Mux(misaligned, s_exc, s_req)
       }
     }
     is(s_req) {
@@ -97,7 +75,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
       }
     }
     is(s_resp) {
-      when(resp.fire || sc_completed) {
+      when(resp.fire) {
         state := Mux(resp.bits.page_fault || resp.bits.access_fault, s_exc, s_idle)
       }
     }
@@ -107,7 +85,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   }
 
   val resp_data = resp.bits.rdata >> (addr_offset << 3)
-  val sign = (!is_ldu && MuxLookup(
+  val sign = ((io.uop.lsu_op =/= s"b$LSU_LDU".U) && MuxLookup(
     io.uop.mem_len,
     false.B,
     Seq(
@@ -127,9 +105,8 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     )
   )
 
-  io.rdata := Mux(is_sc, (!sc_succeed).asUInt, rdata)
-  io.valid := ((state === s_resp) && (resp.fire && !resp.bits.page_fault && !resp.bits.access_fault)) ||
-    sc_completed || (state === s_exc) // assert for only 1 cycle
+  io.rdata   := rdata
+  io.valid   := ((state === s_resp) && (resp.fire && !resp.bits.page_fault && !resp.bits.access_fault)) || (state === s_exc) // assert for only 1 cycle
   io.is_mmio := io.valid && resp.bits.mmio
   io.ready   := ((state === s_idle) && !io.is_mem) || io.valid
 
