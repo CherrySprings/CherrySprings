@@ -183,6 +183,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   io.in.resp.bits              := io.out.resp.bits
   io.in.resp.bits.page_fault   := page_fault_reg
   io.in.resp.bits.access_fault := (state === s_access_fault)
+  io.in.resp.bits.paddr        := HoldUnless(io.out.req.bits.addr, io.out.req.fire)
   io.in.resp.valid             := io.out.resp.valid || io.in.resp.bits.page_fault || io.in.resp.bits.access_fault
   io.out.resp.ready            := io.in.resp.ready
 

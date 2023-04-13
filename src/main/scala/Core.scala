@@ -300,12 +300,6 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     diff_wb.io.dest   := commit_uop.rd_index
     diff_wb.io.data   := ex_wb.io.out.rd_data
 
-    val diff_ls = Module(new DifftestLrScEvent)
-    diff_ls.io.clock   := clock
-    diff_ls.io.coreid  := hartID.U
-    diff_ls.io.valid   := commit_uop.valid && isLrSc(commit_uop.lsu_op)
-    diff_ls.io.success := !ex_wb.io.out.rd_data(0).asBool
-
     val trap  = (commit_uop.instr === HALT()) && commit_uop.valid
     val rf_a0 = rf.io.rf_a0
 

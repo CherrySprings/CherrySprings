@@ -65,8 +65,8 @@ trait Constant {
   val LSU_N       = "00000"
   val LSU_ST      = "00001"
   val LSU_LD      = "00010"
-  val LSU_LDU     = "00100"
-  val LSU_LR      = "01000"
+  val LSU_LDU     = "00110"
+  val LSU_LR      = "01010"
   val LSU_SC      = "01001"
   val LSU_AMOMIN  = "10000"
   val LSU_AMOMAX  = "10001"
@@ -80,6 +80,8 @@ trait Constant {
 
   def isAmo(x:   UInt): Bool = x(4).asBool
   def isStore(x: UInt): Bool = !x(4).asBool && x(0).asBool
+  def isLoad(x:  UInt): Bool = !x(4).asBool && x(1).asBool
+  def isLdu(x:   UInt): Bool = isLoad(x) && x(2).asBool
   def isLrSc(x:  UInt): Bool = !x(4).asBool && x(3).asBool
 
   val MEM_X     = "??"

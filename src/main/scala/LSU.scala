@@ -1,5 +1,6 @@
 import chisel3._
 import chisel3.util._
+import difftest._
 import freechips.rocketchip.rocket._
 import org.chipsalliance.cde.config._
 import Constant._
@@ -85,7 +86,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   }
 
   val resp_data = resp.bits.rdata >> (addr_offset << 3)
-  val sign = ((io.uop.lsu_op =/= s"b$LSU_LDU".U) && MuxLookup(
+  val sign = (!isLdu(io.uop.lsu_op) && MuxLookup(
     io.uop.mem_len,
     false.B,
     Seq(
@@ -135,4 +136,77 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
       )
     )
   io.exc_code := Mux(state === s_exc, exc_code, 0.U)
+
+  if (enableDifftest) {
+    val lsu_ok =
+      (state === s_resp) && (resp.fire && !resp.bits.page_fault && !resp.bits.access_fault && !resp.bits.mmio)
+
+    val dt_sb = Module(new DifftestSbufferEvent)
+    dt_sb.io.clock       := clock
+    dt_sb.io.coreid      := hartID.U
+    dt_sb.io.index       := 0.U
+    dt_sb.io.sbufferResp := RegNext(lsu_ok && io.is_store)
+    dt_sb.io.sbufferAddr := RegNext(resp.bits.paddr)
+    dt_sb.io.sbufferMask := RegNext(wmask)
+    for (i <- 0 until 64) {
+      if (i < 8) {
+        dt_sb.io.sbufferData(i) := RegNext(wdata(i * 8 + 7, i * 8))
+      } else {
+        dt_sb.io.sbufferData(i) := 0.U
+      }
+    }
+
+    val dt_ld = Module(new DifftestLoadEvent)
+    dt_ld.io.clock  := clock
+    dt_ld.io.coreid := hartID.U
+    dt_ld.io.index  := 0.U
+    dt_ld.io.valid  := RegNext(lsu_ok && (isLoad(io.uop.lsu_op) || io.is_amo))
+    dt_ld.io.paddr  := RegNext(resp.bits.paddr)
+    dt_ld.io.opType := RegNext(io.uop.mem_len)
+    dt_ld.io.fuType := Mux(io.is_amo, 0xf.U /* amo */, 0xc.U /* load */ )
+
+    val dt_st = Module(new DifftestStoreEvent)
+    dt_st.io.clock     := clock
+    dt_st.io.coreid    := hartID.U
+    dt_st.io.index     := 0.U
+    dt_st.io.valid     := RegNext(RegNext(lsu_ok && io.is_store && (!isLrSc(io.uop.lsu_op) || !io.rdata(0).asBool)))
+    dt_st.io.storeAddr := RegNext(RegNext(resp.bits.paddr))
+    dt_st.io.storeData := RegNext(RegNext(MaskData(0.U(64.W), wdata, MaskExpand(wmask))))
+    dt_st.io.storeMask := RegNext(RegNext(wmask))
+
+    val dt_am = Module(new DifftestAtomicEvent)
+    dt_am.io.clock      := clock
+    dt_am.io.coreid     := hartID.U
+    dt_am.io.atomicResp := RegNext(lsu_ok && io.is_amo)
+    dt_am.io.atomicAddr := RegNext(resp.bits.paddr)
+    dt_am.io.atomicData := RegNext(wdata)
+    dt_am.io.atomicMask := RegNext(wmask)
+    dt_am.io.atomicOut  := RegNext(io.rdata)
+    dt_am.io.atomicFuop := RegNext(
+      Cat(
+        MuxLookup(
+          io.uop.lsu_op,
+          0.U,
+          Seq(
+            s"b$LSU_AMOSWAP".U -> "b00101".U,
+            s"b$LSU_AMOADD".U  -> "b00111".U,
+            s"b$LSU_AMOXOR".U  -> "b01001".U,
+            s"b$LSU_AMOAND".U  -> "b01011".U,
+            s"b$LSU_AMOOR".U   -> "b01101".U,
+            s"b$LSU_AMOMIN".U  -> "b01111".U,
+            s"b$LSU_AMOMAX".U  -> "b10001".U,
+            s"b$LSU_AMOMINU".U -> "b10011".U,
+            s"b$LSU_AMOMAXU".U -> "b10101".U
+          )
+        ),
+        (io.uop.mem_len === s"b$MEM_DWORD".U).asUInt
+      )
+    )
+
+    val diff_ls = Module(new DifftestLrScEvent)
+    diff_ls.io.clock   := clock
+    diff_ls.io.coreid  := hartID.U
+    diff_ls.io.valid   := RegNext(lsu_ok && isLrSc(io.uop.lsu_op))
+    diff_ls.io.success := RegNext(!io.rdata(0).asBool)
+  }
 }
