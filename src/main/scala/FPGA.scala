@@ -62,8 +62,8 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
     new InclusiveCache(
       CacheParameters(
         level          = 2,
-        ways           = 4,
-        sets           = 512,
+        ways           = l2cacheNumWays,
+        sets           = l2cacheNumSets,
         blockBytes     = 32,
         beatBytes      = 32,
         hintsSkipProbe = false

@@ -15,7 +15,7 @@ class CoreConfig
     extends Config((site, here, up) => {
       case ResetPC      => BigInt("80000000", radix = 16)
       case BootROMImage => "./bootrom/bootrom.img"
-      case CacheNumSets => 512 // 16 KB
+      case CacheNumSets => 8
       case EnableBPU    => true
       case PHTSize      => 512
       case BTBSize      => 16
@@ -24,11 +24,15 @@ class CoreConfig
 case object NumHarts extends Field[Int]
 case object CoreTimerFreq extends Field[Int]
 case object FpgaTimerFreq extends Field[Int]
+case object L2CacheNumSets extends Field[Int]
+case object L2CacheNumWays extends Field[Int]
 
 class SystemConfig
     extends Config((site, here, up) => {
-      case CoreTimerFreq => 2 // suppose 200 MHz core frequency => 200 / 2 = 100 MHz timer frequency
-      case FpgaTimerFreq => 2 // suppose 200 MHz FPGA frequency => 200 / 2 = 100 MHz timer frequency
+      case CoreTimerFreq  => 2 // suppose 200 MHz core frequency => 200 / 2 = 100 MHz timer frequency
+      case FpgaTimerFreq  => 2 // suppose 200 MHz FPGA frequency => 200 / 2 = 100 MHz timer frequency
+      case L2CacheNumSets => 8
+      case L2CacheNumWays => 2
     })
 
 case object EnableDifftest extends Field[Boolean](false)
@@ -71,6 +75,8 @@ trait HasCherrySpringsParameters {
   def ghrLen:           Int     = log2Up(phtSize)
   def coreTimerFreq:    Int     = p(CoreTimerFreq)
   def fpgaTimerFreq:    Int     = p(FpgaTimerFreq)
+  def l2cacheNumSets:   Int     = p(L2CacheNumSets)
+  def l2cacheNumWays:   Int     = p(L2CacheNumWays)
   def tlSourceBits:     Int     = 4
   def tlSerWidth:       Int     = 8
   def enableSerdes:     Boolean = p(EnableSerdes)
