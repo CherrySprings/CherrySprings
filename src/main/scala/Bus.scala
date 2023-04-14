@@ -26,6 +26,7 @@ class CachePortResp(implicit p: Parameters) extends CherrySpringsBundle {
   val access_fault = Output(Bool())
   val mmio         = Output(Bool())
   val paddr        = Output(UInt(paddrLen.W)) // only for difftest & debug
+  val wdata        = Output(UInt(xLen.W)) // only for difftest & debug
 
   override def toPrintable: Printable = {
     cf"rdata=$rdata%x pf=$page_fault af=$access_fault mmio=$mmio"

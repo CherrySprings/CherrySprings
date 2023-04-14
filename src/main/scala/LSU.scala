@@ -138,19 +138,19 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
   io.exc_code := Mux(state === s_exc, exc_code, 0.U)
 
   if (enableDifftest) {
-    val lsu_ok =
-      (state === s_resp) && (resp.fire && !resp.bits.page_fault && !resp.bits.access_fault && !resp.bits.mmio)
+    val lsu_ok        = (state === s_resp) && resp.fire && !resp.bits.page_fault && !resp.bits.access_fault && !resp.bits.mmio
+    val paddr_aligned = Cat(resp.bits.paddr(paddrLen - 1, 3), 0.U(3.W))
 
     val dt_sb = Module(new DifftestSbufferEvent)
     dt_sb.io.clock       := clock
     dt_sb.io.coreid      := hartID.U
     dt_sb.io.index       := 0.U
-    dt_sb.io.sbufferResp := RegNext(lsu_ok && io.is_store)
-    dt_sb.io.sbufferAddr := RegNext(resp.bits.paddr)
-    dt_sb.io.sbufferMask := RegNext(wmask)
+    dt_sb.io.sbufferResp := RegNext(RegNext(lsu_ok && (io.is_store || io.is_amo)))
+    dt_sb.io.sbufferAddr := RegNext(RegNext(paddr_aligned))
+    dt_sb.io.sbufferMask := RegNext(RegNext(wmask))
     for (i <- 0 until 64) {
       if (i < 8) {
-        dt_sb.io.sbufferData(i) := RegNext(wdata(i * 8 + 7, i * 8))
+        dt_sb.io.sbufferData(i) := RegNext(RegNext(resp.bits.wdata(i * 8 + 7, i * 8)))
       } else {
         dt_sb.io.sbufferData(i) := 0.U
       }
@@ -169,16 +169,18 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     dt_st.io.clock     := clock
     dt_st.io.coreid    := hartID.U
     dt_st.io.index     := 0.U
-    dt_st.io.valid     := RegNext(RegNext(lsu_ok && io.is_store && (!isLrSc(io.uop.lsu_op) || !io.rdata(0).asBool)))
-    dt_st.io.storeAddr := RegNext(RegNext(resp.bits.paddr))
-    dt_st.io.storeData := RegNext(RegNext(MaskData(0.U(64.W), wdata, MaskExpand(wmask))))
+    dt_st.io.storeAddr := RegNext(RegNext(paddr_aligned))
+    dt_st.io.storeData := RegNext(RegNext(MaskData(0.U(64.W), resp.bits.wdata, MaskExpand(wmask))))
     dt_st.io.storeMask := RegNext(RegNext(wmask))
+    dt_st.io.valid := RegNext(
+      RegNext(lsu_ok && ((io.is_store && (!isLrSc(io.uop.lsu_op) || !io.rdata(0).asBool)) || io.is_amo))
+    )
 
     val dt_am = Module(new DifftestAtomicEvent)
     dt_am.io.clock      := clock
     dt_am.io.coreid     := hartID.U
     dt_am.io.atomicResp := RegNext(lsu_ok && io.is_amo)
-    dt_am.io.atomicAddr := RegNext(resp.bits.paddr)
+    dt_am.io.atomicAddr := RegNext(paddr_aligned)
     dt_am.io.atomicData := RegNext(wdata)
     dt_am.io.atomicMask := RegNext(wmask)
     dt_am.io.atomicOut  := RegNext(io.rdata)

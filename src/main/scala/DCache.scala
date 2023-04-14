@@ -144,9 +144,10 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   }
 
   // write data & mask expanded to 256 bits from input request
+  val wdata_64  = Mux(req_r.isAmo(), amo_wdata_64, req_r.wdata)
   val wdata_256 = Wire(UInt(256.W))
   val wmask_256 = Wire(UInt(256.W))
-  wdata_256 := Mux(req_r.isAmo(), amo_wdata_64, req_r.wdata) << (getOffset(req_r.addr) << 6)
+  wdata_256 := wdata_64 << (getOffset(req_r.addr) << 6)
   wmask_256 := MaskExpand(req_r.wmask) << (getOffset(req_r.addr) << 6)
 
   // cache write
@@ -262,6 +263,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   resp.valid      := ((state === s_check && array_hit) || (state === s_ok)) && !(probing || tl.b.fire)
   resp.bits       := 0.U.asTypeOf(new CachePortResp)
   resp.bits.rdata := Mux(is_sc_r, sc_fail_r.asUInt, rdata_64)
+  resp.bits.wdata := wdata_64
 
   if (debugDCache) {
     when(req.fire) {
