@@ -47,9 +47,10 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   assert(io.wlevel =/= 3.U)
 
   // TLB sizes
-  val tlb4kb_size = 16
-  val tlb2mb_size = 4
-  val tlb1gb_size = 2
+  val tlb4kb_size = 32
+  val tlb2mb_size = 8
+  val tlb1gb_size = 4
+  assert(tlb4kb_size >= tlb2mb_size && tlb2mb_size >= tlb1gb_size)
 
   // random replacement
   val replace_idx = Wire(UInt(log2Up(tlb4kb_size).W))
@@ -93,12 +94,16 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
    */
   val array2mb       = RegInit(VecInit(Seq.fill(tlb2mb_size)(0.U.asTypeOf(new TLB2MBEntry))))
   val array2mb_valid = RegInit(VecInit(Seq.fill(tlb2mb_size)(false.B)))
-  val array2mb_rdata = Wire(new TLB2MBEntry)
+  val array2mb_rdata = WireDefault(0.U.asTypeOf(new TLB2MBEntry))
   val array2mb_wdata = Wire(new TLB2MBEntry)
-  val hit2mb         = Wire(Bool())
-  // read, index by lower bits of vaddr vpn1
-  array2mb_rdata := array2mb(io.vaddr.vpn1)
-  hit2mb         := array2mb_valid(io.vaddr.vpn1) && (array2mb_rdata.vpn2mb() === io.vaddr.vpn2mb())
+  val hit2mb         = WireDefault(false.B)
+  // read
+  for (i <- 0 until tlb2mb_size) {
+    when(array2mb_valid(i) && (array2mb(i).vpn2mb() === io.vaddr.vpn2mb())) {
+      hit2mb         := true.B
+      array2mb_rdata := array2mb(i)
+    }
+  }
   // set wdata
   array2mb_wdata.flag := io.wpte.flag
   array2mb_wdata.vpn2 := io.wvaddr.vpn2
@@ -106,9 +111,8 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   array2mb_wdata.ppn2 := io.wpte.ppn2
   array2mb_wdata.ppn1 := io.wpte.ppn1
   when(io.wen && (io.wlevel === 1.U)) {
-    // index by lower bits of wvaddr vpn1
-    array2mb(io.wvaddr.vpn1)       := array2mb_wdata
-    array2mb_valid(io.wvaddr.vpn1) := true.B
+    array2mb(replace_idx)       := array2mb_wdata
+    array2mb_valid(replace_idx) := true.B
   }
   when(io.sfence_vma) {
     for (i <- 0 until tlb2mb_size) {
@@ -121,20 +125,23 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
    */
   val array1gb       = RegInit(VecInit(Seq.fill(tlb1gb_size)(0.U.asTypeOf(new TLB1GBEntry))))
   val array1gb_valid = RegInit(VecInit(Seq.fill(tlb1gb_size)(false.B)))
-  val array1gb_rdata = Wire(new TLB1GBEntry)
+  val array1gb_rdata = WireDefault(0.U.asTypeOf(new TLB1GBEntry))
   val array1gb_wdata = Wire(new TLB1GBEntry)
-  val hit1gb         = Wire(Bool())
-  // read, index by lower bits of vaddr vpn2
-  array1gb_rdata := array1gb(io.vaddr.vpn2)
-  hit1gb         := array1gb_valid(io.vaddr.vpn2) && (array1gb_rdata.vpn1gb() === io.vaddr.vpn1gb())
+  val hit1gb         = WireDefault(false.B)
+  // read
+  for (i <- 0 until tlb1gb_size) {
+    when(array1gb_valid(i) && (array1gb(i).vpn1gb() === io.vaddr.vpn1gb())) {
+      hit1gb         := true.B
+      array1gb_rdata := array1gb(i)
+    }
+  }
   // set wdata
   array1gb_wdata.flag := io.wpte.flag
   array1gb_wdata.vpn2 := io.wvaddr.vpn2
   array1gb_wdata.ppn2 := io.wpte.ppn2
   when(io.wen && (io.wlevel === 2.U)) {
-    // index by lower bits of wvaddr vpn2
-    array1gb(io.wvaddr.vpn2)       := array1gb_wdata
-    array1gb_valid(io.wvaddr.vpn2) := true.B
+    array1gb(replace_idx)       := array1gb_wdata
+    array1gb_valid(replace_idx) := true.B
   }
   when(io.sfence_vma) {
     for (i <- 0 until tlb1gb_size) {
