@@ -120,7 +120,7 @@ class SoC(implicit p: Parameters) extends SoCAbstract {
         )
       ),
       beatBytes = beatBytes,
-      endSinkId = 1
+      endSinkId = 42 // magic number
     )
   )
   serdes.node := TLTraceBuffer() := soc_imp.node.get
