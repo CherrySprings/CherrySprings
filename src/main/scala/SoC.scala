@@ -123,7 +123,7 @@ class SoC(implicit p: Parameters) extends SoCAbstract {
       endSinkId = 1
     )
   )
-  serdes.node := TLBuffer() := soc_imp.node.get
+  serdes.node := TLTraceBuffer() := soc_imp.node.get
 
   override lazy val module = new SoCAbstractImp(this) {
     val in_fifo  = Module(new AsyncQueue(UInt(tlSerWidth.W)))
