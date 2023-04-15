@@ -58,6 +58,7 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
     )
   )
 
+  // L2 shared cache and coherence controller
   val l2cache = LazyModule(
     new InclusiveCache(
       CacheParameters(
@@ -74,7 +75,7 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
 
   // don't modify order of following nodes
   mem.node  := TLCacheCork() := l2cache.node        := xbar.node
-  pbar.node := TLFIFOFixer() := TLFragmenter(8, 32) := TLWidthWidget(32) := xbar.node
+  pbar.node := TLFIFOFixer() := TLFragmenter(8, 32) := TLWidthWidget(32) := xbar.node // MMIO has higher priority
 
   rom.node               := pbar.node
   hart_id_allocator.node := pbar.node
@@ -85,6 +86,7 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
   for (i <- 0 until numHarts) {
     xbar.node := TLBuffer() := node.get(i)
   }
+  xbar.node := TLSilentClient() // in order to generate correct config for L2 cache
 
   class IntSourceBridge(val num: Int)(implicit p: Parameters) extends LazyModule {
     val sourceNode  = IntSourceNode(IntSourcePortSimple(num, ports = 1, sources = 1))
@@ -149,8 +151,9 @@ class FPGA(implicit p: Parameters) extends FPGAAbstract {
         w = tlSerWidth,
         params = Seq(
           TLMasterParameters.v1(
-            name     = "tl-desser",
-            sourceId = IdRange(0, 1 << tlSourceBits)
+            name          = "tl-desser",
+            sourceId      = IdRange(0, 1 << tlSourceBits),
+            supportsProbe = TransferSizes(32)
           )
         )
       )
@@ -164,7 +167,7 @@ class FPGA(implicit p: Parameters) extends FPGAAbstract {
   override lazy val module = new FPGAAbstractImp(this) {
     val mergeType     = desser(0).module.mergeTypes(0)
     val wordsPerBeat  = (mergeType.getWidth - 1) / tlSerWidth + 1
-    val beatsPerBlock = 4
+    val beatsPerBlock = 1
     val qDepth        = (wordsPerBeat * beatsPerBlock) << tlSourceBits
 
     for (i <- 0 until numHarts) {

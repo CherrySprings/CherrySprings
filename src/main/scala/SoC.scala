@@ -40,9 +40,9 @@ class SoCImp(implicit p: Parameters) extends SoCAbstract {
   plic_int_sink :*= plic_int
 
   // don't modify order of following nodes
-  xbar.node := icache.node // 0
-  xbar.node := dcache.node // 1
-  xbar.node := TLWidthWidget(8) := uncache.node // 2
+  xbar.node := icache.node // 0 (must be the lowest to avoid deadlock)
+  xbar.node := TLWidthWidget(8) := uncache.node // 1
+  xbar.node := dcache.node // 2 (must be the highest to ensure correct b channel routing for Sesdes)
   node.get  := xbar.node
 
   override lazy val module = new SoCAbstractImp(this) {
@@ -101,22 +101,22 @@ class SoC(implicit p: Parameters) extends SoCAbstract {
   soc_imp.plic_int :*= plic_int
 
   // serdes
-  val beatBytes = 8
+  val beatBytes = 32
   val serdes = LazyModule(
     new TLSerdes(
       w = tlSerWidth,
       params = Seq(
         TLSlaveParameters.v1(
           address            = Seq(AddressSet(BigInt("00000000", 16), BigInt("ffffffff", 16))),
-          regionType         = RegionType.UNCACHED,
-          supportsAcquireT   = TransferSizes(1, 4 * beatBytes),
-          supportsAcquireB   = TransferSizes(1, 4 * beatBytes),
-          supportsArithmetic = TransferSizes(1, 4 * beatBytes),
-          supportsLogical    = TransferSizes(1, 4 * beatBytes),
-          supportsGet        = TransferSizes(1, 4 * beatBytes),
-          supportsPutFull    = TransferSizes(1, 4 * beatBytes),
-          supportsPutPartial = TransferSizes(1, 4 * beatBytes),
-          supportsHint       = TransferSizes(1, 4 * beatBytes)
+          regionType         = RegionType.CACHED,
+          supportsAcquireT   = TransferSizes(1, beatBytes),
+          supportsAcquireB   = TransferSizes(1, beatBytes),
+          supportsArithmetic = TransferSizes(1, beatBytes),
+          supportsLogical    = TransferSizes(1, beatBytes),
+          supportsGet        = TransferSizes(1, beatBytes),
+          supportsPutFull    = TransferSizes(1, beatBytes),
+          supportsPutPartial = TransferSizes(1, beatBytes),
+          supportsHint       = TransferSizes(1, beatBytes)
         )
       ),
       beatBytes = beatBytes,

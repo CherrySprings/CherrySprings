@@ -77,7 +77,7 @@ trait HasCherrySpringsParameters {
   def fpgaTimerFreq:    Int     = p(FpgaTimerFreq)
   def l2cacheNumSets:   Int     = p(L2CacheNumSets)
   def l2cacheNumWays:   Int     = p(L2CacheNumWays)
-  def tlSourceBits:     Int     = 4
+  def tlSourceBits:     Int     = log2Up(3 * sourceRange)
   def tlSerWidth:       Int     = 8
   def enableSerdes:     Boolean = p(EnableSerdes)
   def debugPCTrace:     Boolean = false
