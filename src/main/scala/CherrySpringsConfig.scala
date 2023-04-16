@@ -13,7 +13,7 @@ case object BTBSize extends Field[Int]
 
 class CoreConfig
     extends Config((site, here, up) => {
-      case ResetPC      => BigInt("80000000", radix = 16)
+      case ResetPC      => BigInt("00010000", radix = 16)
       case BootROMImage => "./bootrom/bootrom.img"
       case CacheNumSets => 8
       case EnableBPU    => true

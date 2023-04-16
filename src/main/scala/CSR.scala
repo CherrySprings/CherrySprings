@@ -40,6 +40,8 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     val cycle   = Output(UInt(xLen.W))
     val instret = Output(UInt(xLen.W))
     val commit  = Input(UInt(1.W))
+
+    val hartid = Output(UInt(8.W)) // only for difftest
   })
 
   // privilege mode
@@ -344,6 +346,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     }
     csr_legal := prv_is_m
   }
+  io.hartid := mhartid(7, 0)
 
   /*
    * Number:      0x301
@@ -797,7 +800,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   if (enableDifftest) {
     val diff_cs = Module(new DifftestCSRState)
     diff_cs.io.clock          := clock
-    diff_cs.io.coreid         := hartID.U
+    diff_cs.io.coreid         := io.hartid
     diff_cs.io.priviledgeMode := prv
     diff_cs.io.mstatus        := mstatus
     diff_cs.io.sstatus        := sstatus
@@ -819,7 +822,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
 
     val diff_ae = Module(new DifftestArchEvent)
     diff_ae.io.clock         := clock
-    diff_ae.io.coreid        := hartID.U
+    diff_ae.io.coreid        := io.hartid
     diff_ae.io.intrNO        := RegNext(Mux(is_int, cause_int, 0.U))
     diff_ae.io.cause         := RegNext(Mux(is_exc, cause_exc, 0.U))
     diff_ae.io.exceptionPC   := RegNext(io.uop.pc)

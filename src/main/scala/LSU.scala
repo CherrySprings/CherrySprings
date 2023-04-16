@@ -21,6 +21,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     val dmem     = new CachePortIO
     val ready    = Output(Bool())
     val is_mmio  = Output(Bool())
+    val hartid   = Input(UInt(8.W)) // only for difftest
   })
 
   val req  = io.dmem.req
@@ -143,7 +144,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
 
     val dt_sb = Module(new DifftestSbufferEvent)
     dt_sb.io.clock       := clock
-    dt_sb.io.coreid      := hartID.U
+    dt_sb.io.coreid      := io.hartid
     dt_sb.io.index       := 0.U
     dt_sb.io.sbufferResp := RegNext(RegNext(lsu_ok && (io.is_store || io.is_amo)))
     dt_sb.io.sbufferAddr := RegNext(RegNext(paddr_aligned))
@@ -158,7 +159,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
 
     val dt_ld = Module(new DifftestLoadEvent)
     dt_ld.io.clock  := clock
-    dt_ld.io.coreid := hartID.U
+    dt_ld.io.coreid := io.hartid
     dt_ld.io.index  := 0.U
     dt_ld.io.valid  := RegNext(lsu_ok && (isLoad(io.uop.lsu_op) || io.is_amo))
     dt_ld.io.paddr  := RegNext(resp.bits.paddr)
@@ -167,7 +168,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
 
     val dt_st = Module(new DifftestStoreEvent)
     dt_st.io.clock     := clock
-    dt_st.io.coreid    := hartID.U
+    dt_st.io.coreid    := io.hartid
     dt_st.io.index     := 0.U
     dt_st.io.storeAddr := RegNext(RegNext(paddr_aligned))
     dt_st.io.storeData := RegNext(RegNext(MaskData(0.U(64.W), resp.bits.wdata, MaskExpand(wmask))))
@@ -178,7 +179,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
 
     val dt_am = Module(new DifftestAtomicEvent)
     dt_am.io.clock      := clock
-    dt_am.io.coreid     := hartID.U
+    dt_am.io.coreid     := io.hartid
     dt_am.io.atomicResp := RegNext(lsu_ok && io.is_amo)
     dt_am.io.atomicAddr := RegNext(paddr_aligned)
     dt_am.io.atomicData := RegNext(wdata)
@@ -207,7 +208,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
 
     val diff_ls = Module(new DifftestLrScEvent)
     diff_ls.io.clock   := clock
-    diff_ls.io.coreid  := hartID.U
+    diff_ls.io.coreid  := io.hartid
     diff_ls.io.valid   := RegNext(lsu_ok && isLrSc(io.uop.lsu_op))
     diff_ls.io.success := RegNext(!io.rdata(0).asBool)
   }

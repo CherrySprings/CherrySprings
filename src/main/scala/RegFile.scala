@@ -12,6 +12,7 @@ class RegFile(implicit p: Parameters) extends CherrySpringsModule {
     val rd_data   = Input(UInt(xLen.W))
     val rd_wen    = Input(Bool())
     val rf_a0     = Output(UInt(8.W)) // only for difftest
+    val hartid    = Input(UInt(8.W)) // only for difftest
   })
 
   def access(x: UInt) = rf(~x)
@@ -40,7 +41,7 @@ class RegFile(implicit p: Parameters) extends CherrySpringsModule {
   if (enableDifftest) {
     val dt_ar = Module(new DifftestArchIntRegState)
     dt_ar.io.clock  := clock
-    dt_ar.io.coreid := hartID.U
+    dt_ar.io.coreid := io.hartid
     dt_ar.io.gpr(0) := 0.U
     for (i <- 1 until 32) {
       dt_ar.io.gpr(i) := Mux(io.rd_wen && (io.rd_index === i.U) && (io.rd_index =/= 0.U), io.rd_data, access(i))
