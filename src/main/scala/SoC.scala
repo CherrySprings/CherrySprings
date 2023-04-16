@@ -123,7 +123,11 @@ class SoC(implicit p: Parameters) extends SoCAbstract {
     out_fifo.io.deq_clock := io.io_clock.get
     out_fifo.io.deq_reset := io.io_reset.get
 
-    // interrupt input
-    soc_imp.module.io.intr := io.intr
+    // interrupt input (sync_dff triggered by on-chip clock & reset)
+    val sync_dff = RegInit(VecInit(Seq.fill(3)(0.U.asTypeOf(new ExternalInterrupt))))
+    sync_dff(0)            := io.intr
+    sync_dff(1)            := sync_dff(0)
+    sync_dff(2)            := sync_dff(1)
+    soc_imp.module.io.intr := sync_dff(2)
   }
 }

@@ -190,7 +190,15 @@ class FPGA(implicit p: Parameters) extends FPGAAbstract {
     // UART
     io.uart <> fpga_imp.module.io.uart
 
-    // interrupt output
-    io.intr := fpga_imp.module.io.intr
+    // interrupt output (sync_dff triggered by IO clock & reset)
+    withClockAndReset(io.io_clock.get, io.io_reset.get) {
+      for (i <- 0 until numHarts) {
+        val sync_dff = RegInit(VecInit(Seq.fill(3)(0.U.asTypeOf(new ExternalInterrupt))))
+        sync_dff(0) := fpga_imp.module.io.intr(i)
+        sync_dff(1) := sync_dff(0)
+        sync_dff(2) := sync_dff(1)
+        io.intr(i)  := sync_dff(2)
+      }
+    }
   }
 }
