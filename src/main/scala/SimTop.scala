@@ -19,9 +19,6 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with H
   val fpga = LazyModule(if (enableSerdes) (new FPGA) else (new FPGAImp))
 
   for (i <- 0 until numHarts) {
-    soc(i).clint_int := fpga.clint_int(i)
-    soc(i).plic_int :*= fpga.plic_int(i)
-
     if (!enableSerdes) {
       fpga.node.get(i) := soc(i).node.get
     }
@@ -36,7 +33,15 @@ class SimTop(implicit p: Parameters) extends LazyModule with BindingScope with H
       val uart     = new UARTIO
     })
 
+    // uart
     io.uart <> fpga.module.io.uart
+
+    // interrupt
+    for (i <- 0 until numHarts) {
+      soc(i).module.io.intr := fpga.module.io.intr(i)
+    }
+
+    // data
     if (enableSerdes) {
       val clock_divider = Module(new ClockDivider2)
       val io_clock      = clock_divider.io.clk_out

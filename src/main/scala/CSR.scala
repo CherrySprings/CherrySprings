@@ -34,7 +34,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     val jmp_packet   = Output(new JmpPacket)
     val lsu_addr     = Input(UInt(xLen.W))
     val lsu_exc_code = Input(UInt(4.W))
-    val interrupt    = new ExternalInterruptIO
+    val interrupt    = Input(new ExternalInterrupt)
     val is_int       = Output(Bool())
 
     val cycle   = Output(UInt(xLen.W))

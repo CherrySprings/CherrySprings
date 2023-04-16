@@ -13,9 +13,7 @@ import sifive.blocks.inclusivecache._
 import testchipip._
 
 abstract class FPGAAbstract(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
-  val clint_int: Seq[IntIdentityNode]
-  val plic_int:  Seq[IntIdentityNode]
-  val node:      Option[Seq[TLIdentityNode]]
+  val node: Option[Seq[TLIdentityNode]]
   override lazy val module = new FPGAAbstractImp(this)
 }
 
@@ -26,6 +24,7 @@ class FPGAAbstractImp[+L <: FPGAAbstract](l: L) extends LazyModuleImp(l) with Ha
     val out      = if (enableSerdes) Some(Vec(numHarts, Decoupled(UInt(tlSerWidth.W)))) else None
     val io_clock = if (enableSerdes) Some(Input(Clock())) else None
     val io_reset = if (enableSerdes) Some(Input(Bool())) else None
+    val intr     = Vec(numHarts, Output(new ExternalInterrupt))
   })
 }
 
@@ -101,9 +100,9 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
   val plicSource = LazyModule(new IntSourceBridge(2))
   plic.intnode := plicSource.sourceNode
 
-  // interrupt sources
-  val clint_int = for (i <- 0 until numHarts) yield { val n = IntIdentityNode(); n }
-  val plic_int  = for (i <- 0 until numHarts) yield { val n = IntIdentityNode(); n }
+  // interrupt sinks
+  val clint_int = for (i <- 0 until numHarts) yield { val n = IntSinkNode(IntSinkPortSimple(1, 2)); n }
+  val plic_int  = for (i <- 0 until numHarts) yield { val n = IntSinkNode(IntSinkPortSimple(2, 1)); n }
   for (i <- 0 until numHarts) {
     clint_int(i) := clint.intnode
     plic_int(i) :*= plic.intnode
@@ -118,6 +117,14 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
       val ext_intr_sync = RegInit(0.U(3.W))
       ext_intr_sync := Cat(ext_intr_sync(1, 0), interrupt)
       plic_in       := ext_intr_sync(2)
+    }
+
+    // interrupt output
+    for (i <- 0 until numHarts) {
+      io.intr(i).msip := clint_int(i).in.head._1(0)
+      io.intr(i).mtip := clint_int(i).in.head._1(1)
+      io.intr(i).meip := plic_int(i).in.head._1(0)
+      io.intr(i).seip := plic_int(i).in.last._1(0)
     }
 
     // UART
@@ -135,14 +142,6 @@ class FPGA(implicit p: Parameters) extends FPGAAbstract {
   val fpga_imp = LazyModule(new FPGAImp)
 
   val node = None
-
-  // interrupt
-  val clint_int = for (i <- 0 until numHarts) yield { val n = IntIdentityNode(); n }
-  val plic_int  = for (i <- 0 until numHarts) yield { val n = IntIdentityNode(); n }
-  for (i <- 0 until numHarts) {
-    clint_int(i) := fpga_imp.clint_int(i)
-    plic_int(i) :*= fpga_imp.plic_int(i)
-  }
 
   // desser
   val desser = for (i <- 0 until numHarts) yield {
@@ -165,6 +164,7 @@ class FPGA(implicit p: Parameters) extends FPGAAbstract {
   }
 
   override lazy val module = new FPGAAbstractImp(this) {
+    // desser
     val mergeType     = desser(0).module.mergeTypes(0)
     val wordsPerBeat  = (mergeType.getWidth - 1) / tlSerWidth + 1
     val beatsPerBlock = 1
@@ -189,5 +189,8 @@ class FPGA(implicit p: Parameters) extends FPGAAbstract {
 
     // UART
     io.uart <> fpga_imp.module.io.uart
+
+    // interrupt output
+    io.intr := fpga_imp.module.io.intr
   }
 }

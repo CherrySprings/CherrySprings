@@ -7,13 +7,13 @@ import Constant._
 
 class Core(implicit p: Parameters) extends CherrySpringsModule {
   val io = IO(new Bundle {
-    val imem      = new CachePortIO
-    val dmem      = new CachePortIO
-    val iptw      = new CachePortIO
-    val dptw      = new CachePortIO
-    val uncache   = new CachePortIO
-    val fence_i   = Output(Bool())
-    val interrupt = new ExternalInterruptIO
+    val imem    = new CachePortIO
+    val dmem    = new CachePortIO
+    val iptw    = new CachePortIO
+    val dptw    = new CachePortIO
+    val uncache = new CachePortIO
+    val fence_i = Output(Bool())
+    val intr    = Input(new ExternalInterrupt)
   })
 
   val prv        = Wire(UInt(2.W))
@@ -129,7 +129,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   sfence_vma          := csr.io.sfence_vma
   csr.io.lsu_addr     := lsu.io.addr
   csr.io.lsu_exc_code := lsu.io.exc_code
-  csr.io.interrupt    := io.interrupt
+  csr.io.interrupt    := io.intr
   io.fence_i          := csr.io.fence_i
 
   val dmem_proxy = Module(new CachePortProxy()(p.alterPartial({

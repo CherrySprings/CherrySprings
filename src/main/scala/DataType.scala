@@ -51,11 +51,11 @@ class JmpPacket(implicit p: Parameters) extends CherrySpringsBundle {
   val bp_pc     = UInt(xLen.W)
 }
 
-class ExternalInterruptIO(implicit p: Parameters) extends CherrySpringsBundle {
-  val mtip = Input(Bool())
-  val msip = Input(Bool())
-  val meip = Input(Bool())
-  val seip = Input(Bool())
+class ExternalInterrupt(implicit p: Parameters) extends CherrySpringsBundle {
+  val mtip = Bool()
+  val msip = Bool()
+  val meip = Bool()
+  val seip = Bool()
 }
 
 class Sv39VirtAddr(implicit p: Parameters) extends CherrySpringsBundle with Sv39Parameters {

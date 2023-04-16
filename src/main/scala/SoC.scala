@@ -9,9 +9,7 @@ import org.chipsalliance.cde.config._
 import testchipip._
 
 abstract class SoCAbstract(implicit p: Parameters) extends LazyModule with HasCherrySpringsParameters {
-  val clint_int: IntIdentityNode
-  val plic_int:  IntIdentityNode
-  val node:      Option[TLIdentityNode]
+  val node: Option[TLIdentityNode]
   override lazy val module = new SoCAbstractImp(this)
 }
 
@@ -21,6 +19,7 @@ class SoCAbstractImp[+L <: SoCAbstract](l: L) extends LazyModuleImp(l) with HasC
     val out      = if (enableSerdes) Some(Decoupled(UInt(tlSerWidth.W))) else None
     val io_clock = if (enableSerdes) Some(Input(Clock())) else None
     val io_reset = if (enableSerdes) Some(Input(Bool())) else None
+    val intr     = Input(new ExternalInterrupt)
   })
 }
 
@@ -30,14 +29,6 @@ class SoCImp(implicit p: Parameters) extends SoCAbstract {
   val uncache = LazyModule(new Uncache)
   val xbar    = LazyModule(new TLXbar(policy = TLArbiter.highestIndexFirst))
   val node    = Some(TLIdentityNode())
-
-  // interrupt sinks
-  val clint_int_sink = IntSinkNode(IntSinkPortSimple(1, 2))
-  val plic_int_sink  = IntSinkNode(IntSinkPortSimple(2, 1))
-  val clint_int      = IntIdentityNode()
-  val plic_int       = IntIdentityNode()
-  clint_int_sink := clint_int
-  plic_int_sink :*= plic_int
 
   // don't modify order of following nodes
   xbar.node := icache.node // 0 (must be the lowest to avoid deadlock)
@@ -49,10 +40,7 @@ class SoCImp(implicit p: Parameters) extends SoCAbstract {
     val core = Module(new Core)
 
     // interrupt input
-    core.io.interrupt.msip := clint_int_sink.in.head._1(0)
-    core.io.interrupt.mtip := clint_int_sink.in.head._1(1)
-    core.io.interrupt.meip := plic_int.in.head._1(0)
-    core.io.interrupt.seip := plic_int.in.last._1(0)
+    core.io.intr := io.intr
 
     // instruction cache
     icache.module.io.cache   <> core.io.imem
@@ -94,12 +82,6 @@ class SoC(implicit p: Parameters) extends SoCAbstract {
 
   val node = None
 
-  // interrupt
-  val clint_int = IntIdentityNode()
-  val plic_int  = IntIdentityNode()
-  soc_imp.clint_int := clint_int
-  soc_imp.plic_int :*= plic_int
-
   // serdes
   val beatBytes = 32
   val serdes = LazyModule(
@@ -140,5 +122,8 @@ class SoC(implicit p: Parameters) extends SoCAbstract {
     out_fifo.io.deq       <> io.out.get
     out_fifo.io.deq_clock := io.io_clock.get
     out_fifo.io.deq_reset := io.io_reset.get
+
+    // interrupt input
+    soc_imp.module.io.intr := io.intr
   }
 }
