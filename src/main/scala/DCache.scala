@@ -54,7 +54,6 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
 
   val array = Module(new SRAM(depth = cacheNumSets, dw = (new CacheEntry).len()))
   val valid = RegInit(VecInit(Seq.fill(cacheNumSets)(false.B)))
-  val dirty = RegInit(VecInit(Seq.fill(cacheNumSets)(false.B)))
 
   // FSM
   val s_init :: s_check :: s_release :: s_release_ack :: s_acquire :: s_grant :: s_grant_ack :: s_ok :: Nil = Enum(8)
@@ -75,8 +74,8 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
 
   // array output
   val array_out   = HoldUnless(array.io.rdata, RegNext(req.fire)).asTypeOf(new CacheEntry)
-  val array_hit   = valid(getIndex(array_addr)) && (getTag(array_addr) === array_out.tag)
-  val array_dirty = valid(getIndex(array_addr)) && dirty(getIndex(array_addr))
+  val array_valid = valid(getIndex(array_addr))
+  val array_hit   = array_valid && (getTag(array_addr) === array_out.tag)
 
   // cache read
   val rdata_256 = Mux(state === s_ok, tl_d_bits_r.data, array_out.data)
@@ -161,14 +160,10 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
       when(!sc_fail_r) {
         array.io.wen                := true.B
         valid(getIndex(array_addr)) := true.B
-        dirty(getIndex(array_addr)) := req_r.wen
       }
     }.otherwise { // hit & write
       array_wdata.data := MaskData(array_out.data, wdata_256, wmask_256)
       array.io.wen     := req_r.wen && array_hit
-      when(array.io.wen) {
-        dirty(getIndex(array_addr)) := true.B
-      }
     }
   }
 
@@ -185,11 +180,11 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
       when(resp.fire) {
         state := s_init
       }.elsewhen(!array_hit) {
-        state := Mux(array_dirty, s_release, s_acquire)
+        state := Mux(array_valid, s_release, s_acquire)
       }
     }
     is(s_release) {
-      when(!array_dirty) {
+      when(!array_valid) {
         state := s_acquire
       }.elsewhen(tl.c.fire && !probing) {
         state := s_release_ack
@@ -223,10 +218,9 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   }
 
   // probe output
-  val probe_addr  = Mux(tl.b.fire, tl.b.bits.address, tl_b_bits_r.address)
-  val probe_out   = HoldUnless(array.io.rdata, RegNext(tl.b.fire)).asTypeOf(new CacheEntry)
-  val probe_hit   = valid(getIndex(probe_addr)) && (getTag(probe_addr) === probe_out.tag)
-  val probe_dirty = valid(getIndex(probe_addr)) && dirty(getIndex(probe_addr))
+  val probe_addr = Mux(tl.b.fire, tl.b.bits.address, tl_b_bits_r.address)
+  val probe_out  = HoldUnless(array.io.rdata, RegNext(tl.b.fire)).asTypeOf(new CacheEntry)
+  val probe_hit  = valid(getIndex(probe_addr)) && (getTag(probe_addr) === probe_out.tag)
   when(tl.b.fire) {
     array.io.addr := getIndex(probe_addr)
   }
@@ -234,7 +228,6 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   // clear cacheline when being probed and hit
   when(probing && tl.c.fire && probe_hit) {
     valid(getIndex(probe_addr)) := false.B
-    dirty(getIndex(probe_addr)) := false.B
   }
 
   // aligned address
@@ -253,7 +246,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   tl.a.valid := (state === s_acquire)
   tl.b.ready := !probing
   tl.c.bits  := Mux(probing, Mux(probe_hit, probe_ack_data_bits, probe_ack_bits), release_bits)
-  tl.c.valid := probing || ((state === s_release) && array_dirty)
+  tl.c.valid := probing || ((state === s_release) && array_valid)
   tl.d.ready := (state === s_release_ack) || (state === s_grant)
   tl.e.bits  := grant_ack_bits
   tl.e.valid := (state === s_grant_ack)
