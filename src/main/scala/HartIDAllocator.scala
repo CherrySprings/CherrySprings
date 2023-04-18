@@ -14,10 +14,10 @@ class HartIDAllocator(implicit p: Parameters) extends LazyModule with HasCherryS
   )
 
   lazy val module = new LazyModuleImp(this) {
-    val hart_id = RegInit(0.U(64.W))
+    val hart_id = RegInit(1.U(1.W))
 
     def hartIDAllocate(ready: Bool): (Bool, UInt) = {
-      when(ready) { hart_id := hart_id + 1.U }
+      when(ready) { hart_id := hart_id - 1.U }
       // (ready, bits)
       (true.B, hart_id)
     }
