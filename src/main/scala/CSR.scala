@@ -625,17 +625,47 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   io.cycle := cycle
 
   /*
+   * Number:      0x350
+   * Privilege:   MRW
+   * Name:        timer_freq
+   * Description:
+   */
+  val timer_freq = RegInit(UInt(8.W), coreTimerFreq.U)
+  when(io.rw.addr === "h350".U) {
+    rdata := timer_freq
+    when(wen) {
+      timer_freq := wdata
+    }
+    csr_legal := prv_is_m
+  }
+
+  /*
+   * Number:      0x351
+   * Privilege:   MRW
+   * Name:        timer_step
+   * Description:
+   */
+  val timer_step = RegInit(UInt(8.W), 1.U)
+  when(io.rw.addr === "h351".U) {
+    rdata := timer_step
+    when(wen) {
+      timer_step := wdata
+    }
+    csr_legal := prv_is_m
+  }
+
+  /*
    * Number:      0xC01
    * Privilege:   URO
    * Name:        time
    * Description: Timer for RDTIME instruction
    */
   val time       = RegInit(UInt(64.W), 0.U)
-  val timer_cnt  = RegInit(coreTimerFreq.U)
-  val timer_tick = (timer_cnt === 0.U)
-  timer_cnt := Mux(timer_tick, coreTimerFreq.U, timer_cnt - 1.U)
+  val timer_cnt  = RegInit(0.U(8.W))
+  val timer_tick = (timer_cnt === (timer_freq - 1.U))
+  timer_cnt := Mux(timer_tick, 0.U, timer_cnt + 1.U)
   when(timer_tick) {
-    time := time + 1.U
+    time := time + timer_step
   }
   when(io.rw.addr === CSRs.time.U) {
     rdata     := time

@@ -264,8 +264,9 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
     val commit_csr     = commit_uop.instr(31, 20)
     val commit_cycle   = commit_is_csr && (commit_csr === CSRs.mcycle.U || commit_csr === CSRs.cycle.U)
     val commit_time    = commit_is_csr && (commit_csr === CSRs.time.U)
+    val commit_tset    = commit_is_csr && (commit_csr === "h350".U || commit_csr === "h351".U)
     val commit_instret = commit_is_csr && (commit_csr === CSRs.minstret.U || commit_csr === CSRs.instret.U)
-    val commit_skip    = ex_wb.io.out.is_mmio || commit_cycle || commit_time || commit_instret
+    val commit_skip    = ex_wb.io.out.is_mmio || commit_cycle || commit_time || commit_tset || commit_instret
 
     val diff_ic = Module(new DifftestInstrCommit)
     diff_ic.io.clock   := clock
