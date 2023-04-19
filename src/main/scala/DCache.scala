@@ -126,20 +126,27 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   // lr / sc
   val lrsc_reserved = RegInit(false.B)
   val lrsc_addr     = RegInit(0.U((paddrLen - 5).W)) // reservation set is a 32-byte cacheline
+  val lrsc_counter  = RegInit(0.U(5.W))
+  val lrsc_backoff  = lrsc_counter(4).asBool
   val is_lr_r       = req_r.lrsc && !req_r.wen
   when(resp.fire && is_lr_r) {
     lrsc_reserved := true.B
     lrsc_addr     := req_r.addr(paddrLen - 1, 5)
   }
+  when(lrsc_reserved && !lrsc_backoff) {
+    lrsc_counter := lrsc_counter + 1.U
+  }
   when(tl.b.fire && (tl.b.bits.address(paddrLen - 1, 5) === lrsc_addr)) {
     lrsc_reserved := false.B
+    lrsc_counter  := 0.U
   }
   val is_sc     = req.bits.lrsc && req.bits.wen
   val sc_fail   = is_sc && (!lrsc_reserved || (req.bits.addr(paddrLen - 1, 5) =/= lrsc_addr))
   val is_sc_r   = req_r.lrsc && req_r.wen
   val sc_fail_r = RegEnable(sc_fail, false.B, req.fire)
-  when(req.fire && is_sc) {
+  when(resp.fire && is_sc_r) {
     lrsc_reserved := false.B
+    lrsc_counter  := 0.U
   }
 
   // write data & mask expanded to 256 bits from input request
@@ -244,7 +251,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
 
   tl.a.bits  := acquire_bits
   tl.a.valid := (state === s_acquire)
-  tl.b.ready := !probing
+  tl.b.ready := !probing && (!lrsc_reserved || lrsc_backoff)
   tl.c.bits  := Mux(probing, Mux(probe_hit, probe_ack_data_bits, probe_ack_bits), release_bits)
   tl.c.valid := probing || ((state === s_release) && array_valid)
   tl.d.ready := (state === s_release_ack) || (state === s_grant)

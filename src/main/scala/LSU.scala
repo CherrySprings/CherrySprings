@@ -209,7 +209,7 @@ class LSU(implicit p: Parameters) extends CherrySpringsModule {
     val diff_ls = Module(new DifftestLrScEvent)
     diff_ls.io.clock   := clock
     diff_ls.io.coreid  := io.hartid
-    diff_ls.io.valid   := RegNext(lsu_ok && isLrSc(io.uop.lsu_op))
+    diff_ls.io.valid   := RegNext(lsu_ok && isLrSc(io.uop.lsu_op) && io.is_store)
     diff_ls.io.success := RegNext(!io.rdata(0).asBool)
   }
 }
