@@ -8,6 +8,9 @@ module VirtualRam256 (
   input          wen
 );
 
+`ifndef SYNTHESIS
+`ifdef DIFFTEST
+
 import "DPI-C" function void ram_write_helper
 (
   input  longint    wIdx,
@@ -42,5 +45,8 @@ import "DPI-C" function longint ram_read_helper
     ram_write_helper({addr, 2'b01}, wdata[127: 64], wmask256[127: 64], wen & en);
     ram_write_helper({addr, 2'b00}, wdata[ 63:  0], wmask256[ 63:  0], wen & en);
   end
+
+`endif
+`endif
 
 endmodule
