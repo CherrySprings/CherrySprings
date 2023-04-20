@@ -31,8 +31,8 @@ case object L2CacheNumWays extends Field[Int]
 class SystemConfig
     extends Config((site, here, up) => {
       case FpgaTimerFreq  => 1 // suppose 100 MHz FPGA frequency => 100 / 1 = 100 MHz timer frequency
-      case L2CacheNumSets => 8
-      case L2CacheNumWays => 2
+      case L2CacheNumSets => 1024
+      case L2CacheNumWays => 4
     })
 
 case object EnableDifftest extends Field[Boolean](false)
