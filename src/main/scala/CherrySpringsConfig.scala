@@ -3,7 +3,7 @@ import chisel3.util._
 import freechips.rocketchip.subsystem._
 import org.chipsalliance.cde.config._
 
-case object HartID extends Field[Int]
+case object HartID extends Field[Int](0)
 case object ResetPC extends Field[BigInt]
 case object BootROMImage extends Field[String]
 case object CacheNumSets extends Field[Int]
