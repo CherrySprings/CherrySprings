@@ -755,7 +755,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val is_int_sexternal = ie_seie.asBool && ip_seip
   val is_int_software  = ie_msie.asBool && ip_msip
   val is_int = mstatus_mie.asBool && (is_int_clint || is_int_mexternal || is_int_sexternal || is_int_software) &&
-    io.uop.valid && (io.uop.fu === s"b$FU_ALU".U)
+    io.uop.valid && (io.uop.fu =/= s"b$FU_MDU".U && io.uop.fu =/= s"b$FU_LSU".U)
 
   val cause_exc        = Wire(UInt(4.W))
   val cause_exc_onehot = Wire(UInt(16.W))
