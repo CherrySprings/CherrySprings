@@ -150,7 +150,7 @@ class FPGA(implicit p: Parameters) extends FPGAAbstract {
         w = tlSerWidth,
         params = Seq(
           TLMasterParameters.v1(
-            name          = "tl-desser",
+            name          = s"tl-desser-${i}",
             sourceId      = IdRange(0, 1 << tlSourceBits),
             supportsProbe = TransferSizes(32)
           )
