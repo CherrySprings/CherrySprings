@@ -14,7 +14,7 @@ case object CoreTimerFreq extends Field[Int]
 
 class CoreConfig
     extends Config((site, here, up) => {
-      case ResetPC       => BigInt("00010000", radix = 16)
+      case ResetPC       => BigInt("80000000", radix = 16)
       case BootROMImage  => "./bootrom/bootrom.img"
       case CacheNumSets  => 512 // 16 KB L1 cache
       case EnableBPU     => true
@@ -88,6 +88,7 @@ trait HasCherrySpringsParameters {
   def debugUncache:     Boolean = false
   def debugPortProxy:   Boolean = false
   def debugTLB:         Boolean = false
+  def debugInterrupt:   Boolean = false
   def debugBus:         Boolean = false
 }
 

@@ -810,6 +810,26 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   cause_int_onehot := UIntToOH(cause_int)
   io.is_int        := is_int
 
+  if (debugInterrupt) {
+    when(is_int) {
+      printf(cf"${DebugTimer()} [Hart ${hartID}] [Interrupt] ")
+      when(int_index === 11.U) {
+        printf("MEI")
+      }.elsewhen(int_index === 3.U) {
+        printf("MSI")
+      }.elsewhen(int_index === 7.U) {
+        printf("MTI")
+      }.elsewhen(int_index === 9.U) {
+        printf("SEI")
+      }.elsewhen(int_index === 1.U) {
+        printf("SSI")
+      }.elsewhen(int_index === 5.U) {
+        printf("STI")
+      }
+      printf(cf" (at PC = ${io.uop.pc}%x)\n")
+    }
+  }
+
   val tval = WireDefault(0.U(xLen.W))
   when(is_exc_from_lsu) {
     tval := io.lsu_addr
