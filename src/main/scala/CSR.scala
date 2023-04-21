@@ -398,13 +398,10 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    */
   val mie     = WireDefault(0.U(xLen.W))
   val sie     = WireDefault(0.U(xLen.W))
-  val ie_usie = RegInit(0.U(1.W))
   val ie_ssie = RegInit(0.U(1.W))
   val ie_msie = RegInit(0.U(1.W))
-  val ie_utie = RegInit(0.U(1.W))
   val ie_stie = RegInit(0.U(1.W))
   val ie_mtie = RegInit(0.U(1.W))
-  val ie_ueie = RegInit(0.U(1.W))
   val ie_seie = RegInit(0.U(1.W))
   val ie_meie = RegInit(0.U(1.W))
   mie := Cat(
@@ -412,37 +409,32 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     ie_meie,
     0.U(1.W),
     ie_seie,
-    ie_ueie,
+    0.U(1.W),
     ie_mtie,
     0.U(1.W),
     ie_stie,
-    ie_utie,
+    0.U(1.W),
     ie_msie,
     0.U(1.W),
     ie_ssie,
-    ie_usie
+    0.U(1.W)
   )
   sie := Cat(
     0.U(54.W),
     ie_seie,
-    ie_ueie,
-    0.U(2.W),
+    0.U(3.W),
     ie_stie,
-    ie_utie,
-    0.U(2.W),
+    0.U(3.W),
     ie_ssie,
-    ie_usie
+    0.U(1.W)
   )
   when(io.rw.addr === CSRs.mie.U) {
     rdata := mie
     when(wen) {
-      ie_usie := wdata(0)
       ie_ssie := wdata(1)
       ie_msie := wdata(3)
-      ie_utie := wdata(4)
       ie_stie := wdata(5)
       ie_mtie := wdata(7)
-      ie_ueie := wdata(8)
       ie_seie := wdata(9)
       ie_meie := wdata(11)
     }
@@ -451,11 +443,8 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   when(io.rw.addr === CSRs.sie.U) {
     rdata := sie
     when(wen) {
-      ie_usie := wdata(0)
       ie_ssie := wdata(1)
-      ie_utie := wdata(4)
       ie_stie := wdata(5)
-      ie_ueie := wdata(8)
       ie_seie := wdata(9)
     }
     csr_legal := prv_is_ms
@@ -557,49 +546,53 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
    * Name:        mip / sip
    * Description: Machine / Supervisor interrupt pending
    */
-  val mip     = WireDefault(0.U(xLen.W))
-  val sip     = WireDefault(0.U(xLen.W))
-  val ip_usip = RegInit(0.U(1.W))
-  val ip_ssip = RegInit(0.U(1.W))
-  val ip_msip = io.interrupt.msip
-  val ip_utip = RegInit(0.U(1.W))
-  val ip_stip = RegInit(0.U(1.W))
-  val ip_mtip = io.interrupt.mtip
-  val ip_ueip = RegInit(0.U(1.W))
-  val ip_seip = io.interrupt.seip
-  val ip_meip = io.interrupt.meip
+  val mip       = WireDefault(0.U(xLen.W))
+  val sip       = WireDefault(0.U(xLen.W))
+  val ip_ssip   = RegInit(0.U(1.W))
+  val ip_msip   = io.interrupt.msip.asUInt
+  val ip_stip   = RegInit(0.U(1.W))
+  val ip_mtip   = io.interrupt.mtip.asUInt
+  val ip_seip_r = RegInit(0.U(1.W))
+  val ip_seip   = (io.interrupt.seip || ip_seip_r.asBool).asUInt
+  val ip_meip   = io.interrupt.meip.asUInt
   mip := Cat(
     0.U(52.W),
     ip_meip,
     0.U(1.W),
     ip_seip,
-    ip_ueip,
+    0.U(1.W),
     ip_mtip,
     0.U(1.W),
     ip_stip,
-    ip_utip,
+    0.U(1.W),
     ip_msip,
     0.U(1.W),
     ip_ssip,
-    ip_usip
+    0.U(1.W)
   )
   sip := Cat(
     0.U(54.W),
     ip_seip,
-    ip_ueip,
-    0.U(2.W),
+    0.U(3.W),
     ip_stip,
-    ip_utip,
-    0.U(2.W),
+    0.U(3.W),
     ip_ssip,
-    ip_usip
+    0.U(1.W)
   )
   when(io.rw.addr === CSRs.mip.U) {
-    rdata     := mip
+    rdata := mip
+    when(wen) {
+      ip_ssip   := wdata(1)
+      ip_stip   := wdata(5)
+      ip_seip_r := wdata(9)
+    }
     csr_legal := prv_is_m
   }
   when(io.rw.addr === CSRs.sip.U) {
-    rdata     := sip
+    rdata := sip
+    when(wen) {
+      ip_ssip := wdata(1)
+    }
     csr_legal := prv_is_ms
   }
 
@@ -750,12 +743,46 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val is_exc_from_sys  = (is_mret && !mret_legal) || (is_sret && !sret_legal) || (is_sfv && !sfv_legal)
   val is_exc           = is_exc_from_prev || is_exc_from_lsu || is_exc_from_csr
 
-  val is_int_clint     = ie_mtie.asBool && ip_mtip
-  val is_int_mexternal = ie_meie.asBool && ip_meip
-  val is_int_sexternal = ie_seie.asBool && ip_seip
-  val is_int_software  = ie_msie.asBool && ip_msip
-  val is_int = mstatus_mie.asBool && (is_int_clint || is_int_mexternal || is_int_sexternal || is_int_software) &&
-    io.uop.valid && (io.uop.fu =/= s"b$FU_MDU".U && io.uop.fu =/= s"b$FU_LSU".U)
+  def int2index(x: UInt): UInt = {
+    val y = WireDefault(0.U(4.W))
+    when(x(11)) {
+      y := 11.U // MEI
+    }.elsewhen(x(3)) {
+      y := 3.U // MSI
+    }.elsewhen(x(7)) {
+      y := 7.U // MTI
+    }.elsewhen(x(9)) {
+      y := 9.U // SEI
+    }.elsewhen(x(1)) {
+      y := 1.U // SSI
+    }.elsewhen(x(5)) {
+      y := 5.U // STI
+    }
+    y
+  }
+
+  val int_attach     = io.uop.valid && (io.uop.fu === s"b$FU_ALU".U || io.uop.fu === s"b$FU_JMP".U)
+  val int_bits       = mip & mie
+  val int_bits_mmode = int_bits & (~mideleg)
+
+  val int_index     = WireDefault(0.U(4.W))
+  val int_index_tmp = int2index(int_bits)
+  when(prv === PRV.M.U) {
+    when(mstatus_mie.asBool) {
+      int_index := int2index(int_bits_mmode)
+    }
+  }.otherwise {
+    when(((1.U << int_index_tmp) & mideleg) =/= 0.U) { // delegate to S mode
+      when(status_sie.asBool || prv === PRV.U.U) {
+        int_index := int_index_tmp
+      }
+    }.otherwise {
+      when(mstatus_mie.asBool || prv === PRV.U.U || prv === PRV.S.U) {
+        int_index := int_index_tmp
+      }
+    }
+  }
+  val is_int = int_attach && (int_index =/= 0.U)
 
   val cause_exc        = Wire(UInt(4.W))
   val cause_exc_onehot = Wire(UInt(16.W))
@@ -779,7 +806,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   )
 
   cause_exc_onehot := UIntToOH(cause_exc)
-  cause_int        := Mux(is_int_clint, 7.U, Mux(is_int_mexternal, 11.U, Mux(is_int_sexternal, 9.U, 3.U)))
+  cause_int        := int_index
   cause_int_onehot := UIntToOH(cause_int)
   io.is_int        := is_int
 
