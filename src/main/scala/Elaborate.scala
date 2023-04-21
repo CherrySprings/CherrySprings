@@ -39,10 +39,16 @@ object Elaborate extends App with HasRocketChipStageUtils {
       }).toInstance.alterPartial({
         case NumHarts => config.numHarts
       })
-      val top     = LazyModule(new SimTop())
-      val verilog = chisel3.stage.ChiselStage.emitVerilog(top.module)
-      writeOutputFile(".", "SimTop.v", verilog)
-      writeOutputFile(".", "cs.graphml", top.graphML)
+      if (config.target == "syn") {
+        val soc     = LazyModule(new SoC())
+        val verilog = chisel3.stage.ChiselStage.emitVerilog(soc.module)
+        writeOutputFile(".", "SoC.v", verilog)
+      } else {
+        val top     = LazyModule(new SimTop())
+        val verilog = chisel3.stage.ChiselStage.emitVerilog(top.module)
+        writeOutputFile(".", "SimTop.v", verilog)
+        writeOutputFile(".", "cs.graphml", top.graphML)
+      }
     case None =>
       sys.exit(1)
   }

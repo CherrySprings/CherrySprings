@@ -8,7 +8,7 @@ verilog: $(SRC)
 	@mkdir -p $(BUILD_DIR)
 	sbt "run -n $(NUM_CORES) --target $(TARGET) -td $(BUILD_DIR)"
 	@mv *.v $(BUILD_DIR)
-	@mv firrtl_black_box_resource_files.f $(BUILD_DIR)
+	@mv *.f $(BUILD_DIR)
 	@mv *.graphml $(BUILD_DIR)
 
 emu: verilog
