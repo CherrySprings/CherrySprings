@@ -97,7 +97,9 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
     in.zip(outer.sourceNode.out.head._1).foreach { case (i, s) => s := i }
   }
 
-  val plicSource = LazyModule(new IntSourceBridge(2))
+  def numIntr = 1
+
+  val plicSource = LazyModule(new IntSourceBridge(numIntr))
   plic.intnode := plicSource.sourceNode
 
   // interrupt sinks
@@ -110,8 +112,8 @@ class FPGAImp(implicit p: Parameters) extends FPGAAbstract {
 
   override lazy val module = new FPGAAbstractImp(this) {
     // sync external interrupts
-    val ext_intrs = Wire(UInt(2.W))
-    ext_intrs := Cat(uart.module.io.intr, 0.U)
+    val ext_intrs = Wire(UInt(numIntr.W))
+    ext_intrs := Cat(uart.module.io.intr.asUInt)
     require(plicSource.module.in.length == ext_intrs.getWidth)
     for ((plic_in, interrupt) <- plicSource.module.in.zip(ext_intrs.asBools)) {
       val ext_intr_sync = RegInit(0.U(3.W))
