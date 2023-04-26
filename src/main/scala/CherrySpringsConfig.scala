@@ -10,17 +10,15 @@ case object CacheNumSets extends Field[Int]
 case object EnableBPU extends Field[Boolean]
 case object PHTSize extends Field[Int]
 case object BTBSize extends Field[Int]
-case object CoreTimerFreq extends Field[Int]
 
 class CoreConfig
     extends Config((site, here, up) => {
-      case ResetPC       => BigInt("80000000", radix = 16)
-      case BootROMImage  => "./bootrom/bootrom.img"
-      case CacheNumSets  => 512 // 16 KB L1 cache
-      case EnableBPU     => true
-      case PHTSize       => 512
-      case BTBSize       => 16
-      case CoreTimerFreq => 1 // suppose 100 MHz core frequency => 100 / 1 = 100 MHz timer frequency
+      case ResetPC      => BigInt("00010000", radix = 16)
+      case BootROMImage => "./bootrom/bootrom.img"
+      case CacheNumSets => 512 // 16 KB L1 cache
+      case EnableBPU    => true
+      case PHTSize      => 512
+      case BTBSize      => 16
     })
 
 case object NumHarts extends Field[Int]
@@ -73,7 +71,6 @@ trait HasCherrySpringsParameters {
   def btbSize:          Int     = p(BTBSize)
   def enableDifftest:   Boolean = p(EnableDifftest)
   def ghrLen:           Int     = log2Up(phtSize)
-  def coreTimerFreq:    Int     = p(CoreTimerFreq)
   def fpgaTimerFreq:    Int     = p(FpgaTimerFreq)
   def l2cacheNumSets:   Int     = p(L2CacheNumSets)
   def l2cacheNumWays:   Int     = p(L2CacheNumWays)
