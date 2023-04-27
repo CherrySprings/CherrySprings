@@ -40,6 +40,8 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
     val wvaddr = Input(new Sv39VirtAddr)
     val wpte   = Input(new Sv39PTE)
     val wlevel = Input(UInt(2.W))
+    // satp
+    val satp_asid = Input(UInt(16.W))
   })
 
   // 0: 4KB, 1: 2MB, 2: 1GB, 3: invalid
@@ -67,7 +69,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   // read
   for (i <- 0 until tlb4kb_size) {
     when(array4kb_valid(i) && (array4kb(i).vpn() === io.vaddr.vpn())) {
-      hit4kb         := true.B
+      hit4kb         := (array4kb(i).asid === io.satp_asid) || array4kb(i).flag.g
       array4kb_rdata := array4kb(i)
     }
   }
@@ -79,6 +81,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   array4kb_wdata.ppn2 := io.wpte.ppn2
   array4kb_wdata.ppn1 := io.wpte.ppn1
   array4kb_wdata.ppn0 := io.wpte.ppn0
+  array4kb_wdata.asid := io.satp_asid
   when(io.wen && (io.wlevel === 0.U)) {
     array4kb(replace_idx)       := array4kb_wdata
     array4kb_valid(replace_idx) := true.B
@@ -100,7 +103,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   // read
   for (i <- 0 until tlb2mb_size) {
     when(array2mb_valid(i) && (array2mb(i).vpn2mb() === io.vaddr.vpn2mb())) {
-      hit2mb         := true.B
+      hit2mb         := (array2mb(i).asid === io.satp_asid) || array2mb(i).flag.g
       array2mb_rdata := array2mb(i)
     }
   }
@@ -110,6 +113,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   array2mb_wdata.vpn1 := io.wvaddr.vpn1
   array2mb_wdata.ppn2 := io.wpte.ppn2
   array2mb_wdata.ppn1 := io.wpte.ppn1
+  array2mb_wdata.asid := io.satp_asid
   when(io.wen && (io.wlevel === 1.U)) {
     array2mb(replace_idx)       := array2mb_wdata
     array2mb_valid(replace_idx) := true.B
@@ -131,7 +135,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   // read
   for (i <- 0 until tlb1gb_size) {
     when(array1gb_valid(i) && (array1gb(i).vpn1gb() === io.vaddr.vpn1gb())) {
-      hit1gb         := true.B
+      hit1gb         := (array1gb(i).asid === io.satp_asid) || array1gb(i).flag.g
       array1gb_rdata := array1gb(i)
     }
   }
@@ -139,6 +143,7 @@ class TLB(implicit p: Parameters) extends CherrySpringsModule with Sv39Parameter
   array1gb_wdata.flag := io.wpte.flag
   array1gb_wdata.vpn2 := io.wvaddr.vpn2
   array1gb_wdata.ppn2 := io.wpte.ppn2
+  array1gb_wdata.asid := io.satp_asid
   when(io.wen && (io.wlevel === 2.U)) {
     array1gb(replace_idx)       := array1gb_wdata
     array1gb_valid(replace_idx) := true.B

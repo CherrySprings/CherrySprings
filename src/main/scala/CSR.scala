@@ -28,6 +28,7 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
     val mprv         = Output(Bool())
     val mpp          = Output(UInt(2.W))
     val sv39_en      = Output(Bool())
+    val satp_asid    = Output(UInt(16.W))
     val satp_ppn     = Output(UInt(44.W))
     val sfence_vma   = Output(Bool())
     val fence_i      = Output(Bool())
@@ -284,13 +285,15 @@ class CSR(implicit p: Parameters) extends CherrySpringsModule {
   val tvm_en       = prv_is_s && mstatus_tvm.asBool
   // if satp is written with an unsupported MODE, the entire write has no effect
   val satp_wen = (wdata(62, 60) === 0.U)
-  io.sv39_en  := satp(63).asBool
-  io.satp_ppn := satp(43, 0)
+  io.sv39_en   := satp(63).asBool
+  io.satp_asid := satp(59, 44)
+  io.satp_ppn  := satp(43, 0)
   when(io.rw.addr === CSRs.satp.U) {
     rdata := satp
     when(wen && satp_wen) {
       satp         := wdata
       io.sv39_en   := wdata(63).asBool // bypass
+      io.satp_asid := wdata(59, 44) // bypass
       io.satp_ppn  := wdata(43, 0) // bypass
       satp_updated := prv_is_s // flush pipeline after satp updated if in S mode
     }

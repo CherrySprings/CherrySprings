@@ -9,6 +9,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   val io = IO(new Bundle {
     val prv        = Input(UInt(2.W))
     val sv39_en    = Input(Bool())
+    val satp_asid  = Input(UInt(16.W))
     val satp_ppn   = Input(UInt(44.W))
     val sfence_vma = Input(Bool())
     val in         = Flipped(new CachePortIO)
@@ -26,6 +27,7 @@ class CachePortProxy(implicit p: Parameters) extends CherrySpringsModule with Sv
   // access TLB
   val tlb = Module(new TLB)
   tlb.io.prv        := io.prv
+  tlb.io.satp_asid  := io.satp_asid
   tlb.io.sfence_vma := io.sfence_vma
   tlb.io.vaddr      := io.in.req.bits.addr.asTypeOf(new Sv39VirtAddr)
   val tlb_pte   = tlb.io.rpte

@@ -123,6 +123,7 @@ class TLB4KBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
   val ppn2 = UInt(ppn2Len.W)
   val ppn1 = UInt(ppn1Len.W)
   val ppn0 = UInt(ppn0Len.W)
+  val asid = UInt(16.W)
 
   def vpn() = Cat(vpn2, vpn1, vpn0)
 }
@@ -133,6 +134,7 @@ class TLB2MBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
   val vpn1 = UInt(vpn1Len.W)
   val ppn2 = UInt(ppn2Len.W)
   val ppn1 = UInt(ppn1Len.W)
+  val asid = UInt(16.W)
 
   def vpn2mb() = Cat(vpn2, vpn1)
 }
@@ -141,6 +143,7 @@ class TLB1GBEntry(implicit p: Parameters) extends CherrySpringsBundle with Sv39P
   val flag = new Sv39PTEFlag
   val vpn2 = UInt(vpn2Len.W)
   val ppn2 = UInt(ppn2Len.W)
+  val asid = UInt(16.W)
 
   def vpn1gb() = vpn2
 }

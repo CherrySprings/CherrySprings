@@ -18,6 +18,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
 
   val prv        = Wire(UInt(2.W))
   val sv39_en    = Wire(Bool())
+  val satp_asid  = Wire(UInt(16.W))
   val satp_ppn   = Wire(UInt(44.W))
   val sfence_vma = Wire(Bool())
 
@@ -33,6 +34,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   imem_proxy.io.ptw        <> io.iptw
   imem_proxy.io.prv        := prv
   imem_proxy.io.sv39_en    := sv39_en
+  imem_proxy.io.satp_asid  := satp_asid
   imem_proxy.io.satp_ppn   := satp_ppn
   imem_proxy.io.sfence_vma := sfence_vma
 
@@ -125,6 +127,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   sys_jmp_packet      := csr.io.jmp_packet
   prv                 := csr.io.prv
   sv39_en             := csr.io.sv39_en
+  satp_asid           := csr.io.satp_asid
   satp_ppn            := csr.io.satp_ppn
   sfence_vma          := csr.io.sfence_vma
   csr.io.lsu_addr     := lsu.io.addr
@@ -142,6 +145,7 @@ class Core(implicit p: Parameters) extends CherrySpringsModule {
   })))
   dmem_proxy.io.prv        := Mux(csr.io.mprv, csr.io.mpp, prv)
   dmem_proxy.io.sv39_en    := sv39_en
+  dmem_proxy.io.satp_asid  := satp_asid
   dmem_proxy.io.satp_ppn   := satp_ppn
   dmem_proxy.io.sfence_vma := sfence_vma
 
