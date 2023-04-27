@@ -3,7 +3,7 @@
 	url = https://github.com/chipsalliance/rocket-chip.git
 [submodule "difftest"]
 	path = difftest
-	url = https://github.com/OpenXiangShan/difftest.git
+	url = https://github.com/CherrySprings/difftest.git
 [submodule "rocket-chip-inclusive-cache"]
 	path = rocket-chip-inclusive-cache
 	url = https://github.com/chipsalliance/rocket-chip-inclusive-cache.git
