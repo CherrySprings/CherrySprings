@@ -144,9 +144,13 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   val sc_fail   = is_sc && (!lrsc_reserved || (req.bits.addr(paddrLen - 1, 5) =/= lrsc_addr))
   val is_sc_r   = req_r.lrsc && req_r.wen
   val sc_fail_r = RegEnable(sc_fail, false.B, req.fire)
-  when(resp.fire && is_sc_r) {
+  when(resp.fire && req_r.wen) {
     lrsc_reserved := false.B
     lrsc_counter  := 0.U
+  }
+  val sc_rdata_64 = WireDefault(0.U(64.W))
+  when(sc_fail_r) {
+    sc_rdata_64 := 1.U << (req_r.addr(2) << 5)
   }
 
   // write data & mask expanded to 256 bits from input request
@@ -262,7 +266,7 @@ class DCacheModule(outer: DCache) extends LazyModuleImp(outer) with HasCherrySpr
   req.ready       := (state === s_init) && !(probing || tl.b.fire)
   resp.valid      := ((state === s_check && array_hit) || (state === s_ok)) && !(probing || tl.b.fire)
   resp.bits       := 0.U.asTypeOf(new CachePortResp)
-  resp.bits.rdata := Mux(is_sc_r, sc_fail_r.asUInt, rdata_64)
+  resp.bits.rdata := Mux(is_sc_r, sc_rdata_64, rdata_64)
   resp.bits.wdata := wdata_64
 
   if (debugDCache) {
